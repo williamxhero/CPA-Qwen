@@ -145,7 +145,10 @@ func (m *Manager) HandleCall(method string, request []byte) (resp []byte, err er
 		if name == "" {
 			name = config.DefaultDisplayName
 		}
-		return okEnvelope(pluginapi.QuotaDescribeResponse{SupportedProviders: []string{ProviderID}, DisplayName: name}), nil
+		return okEnvelope(struct {
+			pluginapi.QuotaDescribeResponse
+			ScopedInferenceHTTP bool `json:"inference_scoped_http"`
+		}{pluginapi.QuotaDescribeResponse{SupportedProviders: []string{ProviderID}, DisplayName: name}, true}), nil
 	case pluginabi.MethodQuotaFetch:
 		var req pluginapi.QuotaFetchRequest
 		if json.Unmarshal(request, &req) != nil {
