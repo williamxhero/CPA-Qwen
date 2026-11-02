@@ -159,8 +159,10 @@ func TestCodingPlanCLIExactCountsAndMilliseconds(t *testing.T) {
 	}
 }
 
-func TestCodingPlanCLINoLegacySourceCacheOrImplicitEnrollment(t *testing.T) {
-	for _, extra := range [][]string{{"--source", "bl"}, {"--source", "cookie"}, {"--browser", "default"}, {"--cache-only", "--cache-file", "must-not-be-read"}, {"--check"}, {"--bl-path", "must-not-run"}, {"--console-site", "unknown"}} {
+func TestCodingPlanCLINoLegacySourceOrImplicitEnrollment(t *testing.T) {
+	// Strict Coding Plan cache is now explicit opt-in. Cache-only without a
+	// file stays invalid; legacy sources, enrollment and mixed transports do not.
+	for _, extra := range [][]string{{"--source", "bl"}, {"--source", "cookie"}, {"--browser", "default"}, {"--cache-only"}, {"--check"}, {"--bl-path", "must-not-run"}, {"--console-site", "unknown"}} {
 		t.Run(strings.Join(extra, "_"), func(t *testing.T) {
 			args, tokenFile := codingCLIArgs(t)
 			calls := 0

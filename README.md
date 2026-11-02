@@ -16,9 +16,9 @@ Expose one provider, **`qwen`**, using CLIProxyAPI's credential scheduler, rotat
 - Execution always uses the **credential selected by the host**, never the catalog's default key.
 - OpenAI Chat Completions and Anthropic Messages requests, tool calls, image parts and streaming SSE translation, adapted from the MIT reference.
 - Authenticated full catalog discovery, bare upstream model IDs by default, optional explicit prefix and last-good snapshot.
-- Strict Coding Plan helper protocol: three exact request-count windows, no shell, login/refresh or writes. Parsed query success is separate from selected-key authority; unverified results never become native policy quota.
+- Strict Coding Plan helper protocol: three exact request-count windows, no arbitrary shell command or helper auth retry. Parsed query success is separate from selected-key authority; unverified results never become native policy quota.
 - Plugin-registered quota status API retains per-credential selection, with independent query/authority statuses. Missing key/account/plan proof remains `needs_configuration`; the embedded quota page is not advertised as a panel menu.
-- Standalone stdlib-only Go helper: direct fixed official Coding Plan query with an explicit pre-enrolled token. Legacy Token Plan BL/browser/cookie tooling remains standalone compatibility only and is forbidden in this credential quota lane.
+- Standalone stdlib-only Go helper: explicit official Coding Plan CLI or pre-enrolled raw-token transport, plus an opt-in strict Coding Plan cache. Legacy Token Plan BL/browser/cookie tooling remains separate and is forbidden in the credential quota lane. Plugin acceptance of the new helper CLI/cache arguments is separate work, not implemented here.
 
 ## Requirements
 
@@ -112,15 +112,30 @@ Token Plan `/models` is auth-protected. Coding Plan `/models` is a static public
 
 **Canonical:** credential management queries Coding Plan; AI-provider resources query prepaid PAYG balance (not implemented here). No provider/hostname-based product switching is allowed. A UI type is not ownership proof.
 
-The only credential quota helper arguments are the explicit Coding Plan protocol shown in the configuration example. Query directly with the repository helper, not official `bl usage`: official CLI may implicitly refresh tokens and write its profile. Our new source only reads an explicitly provided raw console token and performs one fixed HTTPS Coding Plan operation. It never logs in, refreshes, writes a profile/cache, opens a browser or queries Token Plan/BSS.
+The **plugin's current argument validation** still accepts only the explicit raw-token Coding Plan protocol shown in the configuration example. This helper-only change does not wire CLI/cache arguments through `internal/plugin`, Manager or Core. Raw-token mode reads the supplied token and performs one fixed HTTPS Coding Plan operation, without login, refresh, profile writes, browser or Token Plan/BSS queries.
+
+### Helper CLI transport and cache
+
+The helper now also accepts these explicit standalone invocations (paths are placeholders, not installed configuration):
+
+```text
+bailian-quota --protocol qwen-coding-plan-v1 --source coding-plan --bl-path <explicit-bl-executable-or-cmd> --cache-file <coding-plan-cache.json> --timeout 90s
+bailian-quota --protocol qwen-coding-plan-v1 --source coding-plan --cache-only --cache-file <coding-plan-cache.json> --max-age 45m
+```
+
+`--bl-path` is an alternative to `--token-file`/region/site, never a fallback or combination. `BAILIAN_BL_PATH` alone does not activate this Coding Plan transport. It invokes exactly `usage coding-plan --output json` once through the existing bounded BL runner and Windows private Job. No helper login/auth/refresh command, browser, retry or Token Plan request is made. **The supplied official CLI may internally refresh and write its own profile on an auth failure**; this adapter cannot promise otherwise. Raw-token mode remains available when that behavior is unacceptable. No installed CLI/profile/account is changed by this patch.
+
+Flattened CLI JSON must contain all three windows' native `usedQuota`, `totalQuota` and integer-millisecond `resetTime`; `percentage` is informational, never a substitute for counts. Counts are decoded without adding float rounding (the adapter cannot recover precision already lost inside an external CLI). Any CLI error/nonzero exit, including the legacy Windows teardown-abort status, fails closed. Legacy `--source bl` keeps its original monthly Token Plan behavior; its cache is never reinterpreted as Coding Plan.
+
+Both explicit Coding Plan transports may opt into `--cache-file`. A complete successful result is saved via same-directory temporary write/close/replace, with failed refresh/save preserving the old cache. Cache-only performs no CLI, token-file, profile or network read. It validates the same strict `CodingPlanResult`, rejects stale/future/wrong-protocol/partial/malformed/over-4-MiB input, and preserves the original `observedAt` and reset precision. `--max-age` must be positive (default 45m); cached success remains non-authoritative. The raw-token transport's no-cache default is unchanged.
 
 Domestic: `cn-beijing` / `domestic`; international: `ap-southeast-1` / `international`. No unknown-region fallback. Native counts are exact decimal strings with unit `requests` in `5h`, `week`, `billing_month` windows. Missing/null data, wrong units, unsafe numbers/times and nested errors do not become zero, unlimited quota or partial recovery evidence.
 
 **Query success is not authority:** the helper emits `queryStatus:success`, `authorityStatus:needs_configuration`, `reason:account_authority_unverified`. The native plugin API returns no quota groups/subscription/summary. The plugin management `quota-usage` route retains selected key cards and query status but does not copy account windows/metrics onto unverified keys. Login JSON, hand-entered account, helper `verified:true` and a successful public models list cannot close the selected-key/account/plan binding.
 
-Legacy standalone bsk/cookie/BL and Token Plan caches are rejected before executing the credential quota command; they are not optional fallback/enrichment. A missing protocol/source also fails before execution. Existing inference routing and configuration defaults are not changed by this quota slice; an inference hostname must not select the quota product.
+Legacy standalone bsk/cookie/`--source bl` and Token Plan caches remain rejected by the credential quota command; they are not optional fallback/enrichment. A missing protocol/source also fails before plugin execution. Existing inference routing and configuration defaults are not changed by this quota slice; an inference hostname must not select the quota product.
 
-See [Coding Plan query and authority contract](docs/coding-plan-quota.md) for exact commands, protocol, pinned first-party source lines, safety limits and finite outstanding work. [Old BL deployment notes](docs/bl-quota-deployment.md) are historical standalone Token Plan records, not current credential-lane guidance.
+See [Coding Plan query and authority contract](docs/coding-plan-quota.md) for the original raw-token/plugin contract and pinned first-party source lines; its helper BL/cache prohibition is superseded only by the helper-only interface above, not by new plugin acceptance. [Old BL deployment notes](docs/bl-quota-deployment.md) are historical standalone Token Plan records, not current credential-lane guidance.
 
 ### Credential naming and selection
 
@@ -144,7 +159,7 @@ Tests use dummy keys and mocked HTTP/CLI processes. Live acceptance must use an 
 - No OAuth flow or refresh token: these are manually configured plan keys. Refresh preserves the credential rather than inventing a token.
 - Exhausted inference quota produces the upstream error, not a successful completion. Historical account readings are not current quota or ownership evidence.
 - Read-only query parsing is implemented, but selected-key -> exact Coding Plan/account -> query-principal binding remains unverified. Native policy quota stays `needs_configuration` until a trustworthy verifier exists.
-- The Coding Plan lane does not support legacy browser/cookie/BL/cache fallback or implicit enrollment. Separate pre-enrollment and future real acceptance need explicit authorization.
+- The plugin Coding Plan lane does not yet accept the helper's new explicit CLI/cache configuration. Neither helper transport permits legacy browser/cookie/Token Plan fallback or implicit helper enrollment. Separate pre-enrollment and future real acceptance need explicit authorization; CLI-internal refresh is the explicit caveat above.
 - Coding Plan is the sole credential quota product, not optional enrichment. Successful public model discovery does not validate keys.
 - Removed keys may leave host-managed credential files; remove/disable those via the host management flow. A credential file deleted while the host is running is **not** recreated until the next host restart — the plugin materialises credentials from config at registration, so delete + restart if you need a clean single credential.
 - Initial fallback models may not be available under every plan/region. Client formats supported here are Chat Completions and Messages, not Responses.

@@ -17,12 +17,13 @@ func blCommand(ctx context.Context, path string, args ...string) (*windowsBLComm
 	case ".cmd", ".bat":
 		// Official npm installs use bl.cmd. cmd.exe is needed only for this
 		// shim; reject expansion/control characters and keep arguments fixed.
-		if strings.ContainsAny(path, "\"\r\n&|<>^%!\x00") || strings.Join(args, " ") != "usage token-plan --output json" {
+		command := strings.Join(args, " ")
+		if strings.ContainsAny(path, "\"\r\n&|<>^%!\x00") || command != "usage token-plan --output json" && command != "usage coding-plan --output json" {
 			return nil, errors.New("unsupported bl shim path or arguments")
 		}
 		processor := filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe")
 		cmd = exec.CommandContext(ctx, processor)
-		cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `cmd.exe /d /s /c ""` + path + `" usage token-plan --output json"`}
+		cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `cmd.exe /d /s /c ""` + path + `" ` + command + `"`}
 	default:
 		cmd = exec.CommandContext(ctx, path, args...)
 	}
