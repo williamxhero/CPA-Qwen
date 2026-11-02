@@ -4,7 +4,8 @@
     [Parameter(Mandatory=$true)][string]$CacheFile,
     [Parameter(Mandatory=$true)][string]$StateFile,
     [int]$RecoveryTimeoutSeconds = 90,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [ValidateRange(1,60)][int]$QueryTimeoutSeconds = 15
 )
 $ErrorActionPreference='Stop'
 function Get-QuotaErrorCode([string]$Output){try{$value=$Output|ConvertFrom-Json -ErrorAction Stop;if($value.error -is [string]){return [string]$value.error}}catch{};return ''}
@@ -20,7 +21,7 @@ function Invoke-QuotaRefresh {
     $startInfo.CreateNoWindow=$true
     $startInfo.RedirectStandardOutput=$true
     $startInfo.RedirectStandardError=$true
-    $startInfo.Arguments='--json --source bl --bl-path "'+$BlPath+'" --timeout 120s --cache-file "'+$CacheFile+'"'
+    $startInfo.Arguments='--json --source coding-plan --protocol qwen-coding-plan-v1 --bl-path "'+$BlPath+'" --timeout '+$QueryTimeoutSeconds+'s --cache-file "'+$CacheFile+'"'
     $process=New-Object Diagnostics.Process
     $process.StartInfo=$startInfo
     if(-not $process.Start()){throw 'quota CLI failed to start'}
