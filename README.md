@@ -1,6 +1,6 @@
 # Qwen CLIProxyAPI Plugin
 
-A native CLIProxyAPI v8 credential provider for Alibaba Bailian **Token Plan / Coding Plan**, with a standalone console quota CLI.
+A native CLIProxyAPI v8 credential provider for Qwen, with an explicit read-only **Coding Plan** credential-quota query. Inference support is separate from quota authority.
 
 ## Problem
 
@@ -16,16 +16,15 @@ Expose one provider, **`qwen`**, using CLIProxyAPI's credential scheduler, rotat
 - Execution always uses the **credential selected by the host**, never the catalog's default key.
 - OpenAI Chat Completions and Anthropic Messages requests, tool calls, image parts and streaming SSE translation, adapted from the MIT reference.
 - Authenticated full catalog discovery, bare upstream model IDs by default, optional explicit prefix and last-good snapshot.
-- Native quota groups, windows, subscription and metrics from an external CLI; no shell invocation, hard timeout, no invented readings.
-- Plugin-registered quota API for the panel: 套餐/status/expiry/remaining days, per-window progress and reset countdowns, CLI observation time, and per-credential/all refresh buttons (`POST /v0/management/plugins/qwen-cliproxyapi/quota-usage`). An embedded HTML view is served at `GET /v0/resource/plugins/qwen-cliproxyapi/quota` for manual use, but it is deliberately **not** advertised as a panel menu.
-- Standalone stdlib-only Go CLI: official `bl` console credentials, already-logged-in browser via `bsk`, or explicitly supplied cookie for service/session-0 environments.
+- Strict Coding Plan helper protocol: three exact request-count windows, no shell, login/refresh or writes. Parsed query success is separate from selected-key authority; unverified results never become native policy quota.
+- Plugin-registered quota status API retains per-credential selection, with independent query/authority statuses. Missing key/account/plan proof remains `needs_configuration`; the embedded quota page is not advertised as a panel menu.
+- Standalone stdlib-only Go helper: direct fixed official Coding Plan query with an explicit pre-enrolled token. Legacy Token Plan BL/browser/cookie tooling remains standalone compatibility only and is forbidden in this credential quota lane.
 
 ## Requirements
 
 - CLIProxyAPI **v8.0.0+** native plugin ABI.
 - Windows AMD64; Go 1.26.7+ and a GCC-compatible C compiler with `CGO_ENABLED=1` for the DLL.
-- A Bailian Token Plan or Coding Plan API key. Console quota needs a separately logged-in Alibaba account.
-- For browser mode: `C:\Users\will\.local\bin\bsk`, its daemon, browser extension and a connected logged-in browser.
+- A selected inference key. Coding Plan quota additionally requires an explicit pre-enrolled console token, region/site, and trustworthy ownership evidence (the last is not supplied by this slice). No browser or official CLI is needed for the read-only query.
 
 ## Build
 
@@ -60,7 +59,7 @@ plugins:
       allow-http: false
       quota-source: command
       command: "D:\\WILL\\AGENT\\CPA\\qwen-cliproxyapi\\bin\\bailian-quota.exe"
-      command-args: ["--json"]
+      command-args: ["--protocol", "qwen-coding-plan-v1", "--source", "coding-plan", "--token-file", "C:/protected/example-console-token.txt", "--console-region", "cn-beijing", "--console-site", "domestic", "--json"]
       command-timeout: "90s"
       display-name: "阿里云百炼额度（CLI）"
 ```
@@ -81,7 +80,7 @@ plugins:
 | `allow-http` | `false` | HTTP only for local mocks when explicitly enabled. |
 | `quota-source` | `command` | External CLI is the only quota source. |
 | `command` | Required | Executable path; **not** a shell command. |
-| `command-args` | `["--json"]` | Argument slice; no `cmd /c`, pipes or interpolation. |
+| `command-args` | Must be explicit for quota | Require `--protocol qwen-coding-plan-v1 --source coding-plan` and explicit token-file/region/site; no legacy defaults, shell, pipes or interpolation. |
 | `command-timeout` | `90s` | Hard quota command deadline. |
 | `display-name` | `阿里云百炼额度（CLI）` | Quota group display name. |
 
@@ -91,7 +90,7 @@ For Coding Plan use `https://coding.dashscope.aliyuncs.com/v1` (CN) or `https://
 
 ## Panel API-key form
 
-Registration displays **QWen Plan API Key** with an original embedded Q monogram at `/v0/resource/plugins/qwen-cliproxyapi/logo.svg`. Panel-created credentials are included in the quota API, so the credential card and the standalone page report the same data.
+Registration displays **QWen Plan API Key** with an original embedded Q monogram at `/v0/resource/plugins/qwen-cliproxyapi/logo.svg`. Panel-created credentials are included in the quota API; credential cards and the standalone page retain the same explicit query/authority status, not unverified per-key numbers.
 
 With management authorization, submit `POST /v0/management/plugins/qwen-cliproxyapi/credentials` with `base_url`, `api_key`, and optional `name`. The default label is `Qwen`. Unknown fields are ignored. URLs must be HTTP/HTTPS with a hostname and without userinfo, query, or fragment; explicit HTTP panel credentials are accepted independently of the config-only `allow-http` switch. Prefer HTTPS outside local tests. Empty/whitespace keys and control characters are rejected. Successful responses contain only `ok`, the `qwen-key-<sha256>` ID, and the label; keys are never returned or logged. A label containing the submitted key is redacted. Duplicate key + normalized base URL returns 409, including configured and imported credentials. Unreadable existing Qwen storage fails closed with 502.
 
@@ -111,187 +110,23 @@ Token Plan `/models` is auth-protected. Coding Plan `/models` is a static public
 
 ## Quota via CLI
 
-`cmd/bailian-quota` is implemented in this repository, using Go's standard library only.
+**Canonical:** credential management queries Coding Plan; AI-provider resources query prepaid PAYG balance (not implemented here). No provider/hostname-based product switching is allowed. A UI type is not ownership proof.
 
-```powershell
-.\bin\bailian-quota.exe --json
-.\bin\bailian-quota.exe --pretty --browser <instance-id>
-.\bin\bailian-quota.exe --check --timeout 90s
-.\bin\bailian-quota.exe --source cookie --cookie-file C:\private\bailian-cookie.txt
-```
+The only credential quota helper arguments are the explicit Coding Plan protocol shown in the configuration example. Query directly with the repository helper, not official `bl usage`: official CLI may implicitly refresh tokens and write its profile. Our new source only reads an explicitly provided raw console token and performs one fixed HTTPS Coding Plan operation. It never logs in, refreshes, writes a profile/cache, opens a browser or queries Token Plan/BSS.
 
-Flags: `--json` (default normalized JSON), `--pretty`, `--timeout 90s`, `--check` (login/reachability only), `--source bsk|cookie|bl`, `--bl-path <path>`, `--browser <id>`, `--cookie <header>`, `--cookie-file <path>`, `--cache-file <path>`, `--cache-only`, `--max-age 45m`, `--verbose`. The default source remains `bsk` for compatibility.
+Domestic: `cn-beijing` / `domestic`; international: `ap-southeast-1` / `international`. No unknown-region fallback. Native counts are exact decimal strings with unit `requests` in `5h`, `week`, `billing_month` windows. Missing/null data, wrong units, unsafe numbers/times and nested errors do not become zero, unlimited quota or partial recovery evidence.
 
-### Official bl source (issue #1)
+**Query success is not authority:** the helper emits `queryStatus:success`, `authorityStatus:needs_configuration`, `reason:account_authority_unverified`. The native plugin API returns no quota groups/subscription/summary. The plugin management `quota-usage` route retains selected key cards and query status but does not copy account windows/metrics onto unverified keys. Login JSON, hand-entered account, helper `verified:true` and a successful public models list cannot close the selected-key/account/plan binding.
 
-`--source bl` executes exactly `bl usage token-plan --output json`. Executable selection is
-`--bl-path`, then `BAILIAN_BL_PATH`, then `bl` on PATH. Browser/cookie flags cannot be used
-with this source. It uses the **refresh process user's console profile**, not a plan API
-key, and does not require a continuously open browser or bsk daemon.
+Legacy standalone bsk/cookie/BL and Token Plan caches are rejected before executing the credential quota command; they are not optional fallback/enrichment. A missing protocol/source also fails before execution. Existing inference routing and configuration defaults are not changed by this quota slice; an inference hostname must not select the quota product.
 
-```powershell
-# Example stable installation path, not the temporary Hermes node tools directory.
-.\bin\bailian-quota.exe --source bl --bl-path C:\ProgramData\cpa-bailian\bl.cmd --pretty
-.\bin\bailian-quota.exe --source bl --bl-path C:\ProgramData\cpa-bailian\bl.cmd --cache-file C:\ProgramData\cpa-qwen-quota\qwen-quota.json
-```
+See [Coding Plan query and authority contract](docs/coding-plan-quota.md) for exact commands, protocol, pinned first-party source lines, safety limits and finite outstanding work. [Old BL deployment notes](docs/bl-quota-deployment.md) are historical standalone Token Plan records, not current credential-lane guidance.
 
-For the official output `{"per1MonthPercentage":1,"per1MonthResetTime":1792252800000}`,
-the CLI emits the following shape (`observedAt` is the current observation, not a fixed value):
+### Credential naming and selection
 
-```json
-{"source":"bl","observedAt":"...","windows":[{"window":"1month","usedPercent":100,"resetTime":"2026-10-18T00:00:00+08:00"}],"notes":[]}
-```
+Credential labels preserve explicit aliases; otherwise keys are masked for display. `quota-usage` accepts `{}` for listed Qwen credentials or `{"auth_index":"<host credential index>"}` for one; unknown indexes return 404. No key enters helper argv. The embedded same-origin page still requires management authorization; it shows the explicit error rather than fabricated quota. `/quota-info` remains available.
 
-`plan`, `planStatus`, subscription period/countdown, and `metrics` are **omitted**, both
-live and from cache: bl does not supply them. Milliseconds in the reset timestamp are
-preserved if present. `--check` still runs and validates the CLI response, but emits no
-quota windows. Browser/cookie serialization remains unchanged.
-
-Errors use the existing JSON error channel and nonzero exit, with no readings:
-`bl_unavailable` (missing/unexecutable CLI), `not_logged_in` (official authentication
-code/exit status 3, including expired console credentials), `invalid_response` (bad,
-missing, out-of-range fields or other unsuccessful responses), and `timeout` (deadline,
-cancellation, or official timeout code/exit status 5). Raw stdout/stderr diagnostics are
-never exposed. Windows npm `.cmd`/`.bat` shims run through `cmd.exe` with AutoRun disabled,
-fixed arguments, and no expansion/control characters in the path; native executables
-and Unix launchers execute directly. A timeout terminates the spawned Windows process tree.
-
-The official CLI may write its JSON envelope to either stream, and on Windows the Node
-launcher can abort during teardown (`UV_HANDLE_CLOSING` assertion, status `0xC0000409`)
-after the payload has already been written. The first complete JSON value is therefore
-parsed on both streams and that specific abort is tolerated, so a genuine
-`not_logged_in` is not downgraded to `invalid_response`. Any other trailing content,
-exit status or error code still fails closed.
-
-#### Refresh identity and console renewal
-
-Install official bl and its required Node runtime in a **stable independent location**,
-not `...\hermes\tools\node-26.7.0-win32-x64`. Verify the launcher and Node runtime under
-the scheduled-task identity; copying just `bl.cmd` is insufficient. Configure an absolute
-`--bl-path` in the refresh command. Never copy tokens into this repository.
-
-For the Windows deployment described in the SPEC, `QwenQuotaRefresh` must run as **will**
-to use `C:\Users\will\.bailian\config.json`. A service identity without those console
-credentials will fail with `not_logged_in`. The task can fetch headlessly after login;
-a permanently open browser is not needed. Protect the profile and quota-cache directory.
-
-When the console token expires, run the **same stable CLI as the refresh user**:
-
-```powershell
-C:\ProgramData\cpa-bailian\bl.cmd auth login --console
-# Complete the one-time browser login, then validate and refresh the cache:
-.\bin\bailian-quota.exe --source bl --bl-path C:\ProgramData\cpa-bailian\bl.cmd --check
-.\bin\bailian-quota.exe --source bl --bl-path C:\ProgramData\cpa-bailian\bl.cmd --cache-file C:\ProgramData\cpa-qwen-quota\qwen-quota.json
-```
-
-API-key login **cannot** substitute for console login. Console renewal requires browser
-interaction; there is no supported headless renewal. Failed refreshes leave the prior
-cache untouched, but `--cache-only` still rejects it once `--max-age` expires.
-
-For the Windows `QwenQuotaRefresh` interactive task, deploy
-`ops/refresh-qwen-quota.ps1` to `C:\ProgramData\cpa-qwen-quota` and have the existing
-task wrapper invoke it. It opens the console and shows a one-time notice only for
-`not_logged_in`; unrelated refresh failures do not interrupt the desktop. A successful
-cache refresh clears the notification suppression so a later expired session can notify
-again. Run `powershell.exe -NoProfile -File ops/refresh-qwen-quota.ps1 -SelfTest`
-before deployment to verify classification and suppression behavior.
-
-Keep the host's quota command cache-only; only change the source selector:
-
-```yaml
-quota-source: command
-command: "D:/.../bin/bailian-quota.exe"
-command-args: ["--json", "--source", "bl", "--cache-only", "--cache-file", "C:/ProgramData/cpa-qwen-quota/qwen-quota.json", "--max-age", "45m"]
-```
-
-Cache-only does not execute or resolve bl, so it needs no login or `--bl-path`. The refresh
-task must separately use `--source bl` and the stable CLI path. Changing the host's selector
-alone does not refresh an old bsk cache; the next successful refresh produces `source: bl`.
-For a Linux deployment, use that service user's protected `~/.bailian/config.json`, absolute
-Linux executable/cache paths, and the owning project's deployment procedure; Windows
-paths and the will scheduled-task identity do not apply. See the [deployment record](docs/bl-quota-deployment.md)
-for actual verification status and the remaining environment mismatch.
-
-### Serving a service-identity host (session 0)
-
-A CLIProxyAPI core that runs as a Windows service cannot reach the browser daemon in the
-interactive session. Run two halves:
-
-1. **Interactive session** — a scheduled task refreshes the reading into a cache file
-   (this is also what keeps the console login fresh):
-
-       schtasks /create /f /tn QwenQuotaRefresh /sc minute /mo 10 /it ^
-         /tr "C:\ProgramData\cpa-qwen-quota\refresh-qwen-quota.cmd"
-       :: refresh-qwen-quota.cmd
-       "D:\...\qwen-cliproxyapi\bin\bailian-quota.exe" --json --timeout 120s --cache-file "C:\ProgramData\cpa-qwen-quota\qwen-quota.json"
-
-   Use a directory the service account can read (e.g. `C:\ProgramData\...`); a path under
-   `C:\Users\<user>\...` is not readable by `NT AUTHORITY\LocalService`.
-
-2. **Service identity** — point the plugin at the cache:
-
-       quota-source: command
-       command: "D:\\...\\bin\\bailian-quota.exe"
-       command-args: ["--json", "--cache-only", "--cache-file", "C:/ProgramData/cpa-qwen-quota/qwen-quota.json", "--max-age", "45m"]
-
-`--cache-only` never touches the network: it prints the cached reading and exits non-zero
-(`cache_file_error`, `invalid_cache`, `stale_cache`) when no fresh reading exists, so a
-stalled refresh surfaces as an explicit error instead of silently stale numbers.
-
-### Provider keys must not collide
-
-A model ID is associated with the credential provider by CPA. An `openai-compatibility`
-group literally named `Qwen` normalises to the provider key `qwen`, which conflicts with
-this plugin. Name that group something else (e.g. `Qwen-Compat`) when this
-plugin is installed.
-
-Browser mode selects the first connected browser unless `--browser` is supplied, starts a session **with `--no-focus`**, navigates the Bailian console, then runs an asynchronous console RPC evaluation. It never extracts, prints or saves browser cookies/tokens. The session is stopped even on failure. Avoid running it concurrently with another browser driver. Requests remain on Alibaba console origins.
-
-Cookie mode sends the same form-encoded console RPCs with an explicitly supplied cookie header. Prefer a protected external `--cookie-file` to avoid putting cookie secrets in process argv. A Windows service in **session 0** may not reach the user-session bsk daemon; configure `command-args: ["--json", "--source", "cookie", "--cookie-file", "C:\\private\\bailian-cookie.txt"]` as the fallback. Never commit that file. Cookie expiry requires renewed user login.
-
-The frozen stdout contract is:
-
-```json
-{"source":"bsk","plan":"Token Plan 个人版 Standard","planStatus":"生效中","observedAt":"...","windows":[{"window":"1month","usedPercent":100,"resetTime":"2026-10-18T00:00:00+08:00"}],"metrics":[],"notes":[]}
-```
-
-The CLI exits 0 only with a genuine reading (or a successful `--check`). Failures exit nonzero with `{"error":"<code>","message":"<human text>"}` on stdout. Optional Coding Plan enrichment must not invalidate successful Token Plan quota.
-
-The plugin maps windows to `QuotaBucket` (`remainingFraction = 1 - usedPercent/100`, clamped), preserves reset timestamps, maps metrics to `Summary` and plan to `Subscription.Plan`. No windows and no metrics is an error; subprocess failure, timeout or invalid JSON does not fabricate a balance.
-
-Use `GET /v0/management/quota/providers` to discover support, then `POST /v0/management/quota/fetch` with `{"auth_index":"<credential index>"}` and management authorization. Console quota is **account-scoped**, not derivable from a plan API key: configure a console login corresponding to the credential's account. Multiple keys sharing one CLI login will display that login's account readings.
-
-### Credential naming
-
-The panel shows a credential's **label**, resolved the same way on every surface:
-
-* if you gave it an **alias** (the optional `别名 (Alias)` field, or a config `api-keys` entry's `name`), the alias is shown;
-* otherwise the label is the **API key masked as `first4...last4`** (e.g. `sk-s...9abc`; short keys are masked harder), so two credentials stay distinguishable in the panel without the secret being readable;
-* a label the plugin generated itself under the old naming (`Qwen 3`) is replaced by the mask on the next materialisation, while a label you chose by hand is preserved.
-
-### Quota surfaces
-
-Three ways to read the same numbers, all backed by the CLI:
-
-1. **The panel's credential card** (primary) — a panel-side adapter calls `POST /v0/management/plugins/qwen-cliproxyapi/quota-usage` and renders 套餐 / 额度 / 剩余天数 / 刷新.
-2. **The native v8 quota API** — `POST /v0/management/quota/fetch {"auth_index": "..."}` (also what `/v0/management/quota/providers` advertises).
-3. **The raw page** — `GET /v0/resource/plugins/qwen-cliproxyapi/quota` serves a self-contained HTML view for manual use; it posts to the same-origin `quota-usage` route. It is intentionally not listed as a panel menu, so it does not add a nav entry.
-
-The `/quota-info` endpoint remains available.
-
-Sign into the management panel with **Remember password** enabled, as required by the MIT reference page. The embedded page decodes the host's `cli-proxy-auth` local storage (including `enc::v1::`) at request time and supplies management authorization; it never embeds a management key or sends requests to a third-party origin. If credentials cannot be accessed or the host rejects authorization, it displays the error rather than fake quota.
-
-`quota-usage` returns `{"cards":[...]}`. An empty body or `{}` refreshes all configured Qwen credentials; `{"auth_index":"<host credential index>"}` refreshes one. Indexes come from the host credential list, not the API-key hash; unknown indexes return 404. A CLI failure remains a card with `error` containing the CLI diagnostic and no fabricated reading. The page displays **读不到额度：<错误>** and clears old reading values on failed refresh.
-
-Optional `planStart`, `planEnd` and `daysLeft` extend the existing CLI contract. Subscription timestamps come only from console-reported millisecond epochs; `daysLeft = ceil((planEnd - now) / 24h)`. Missing/invalid periods stay omitted and display **未提供**. Window `resetsInDays` follows the same ceiling rule; expired periods can be zero or negative. Neither countdown implies unused quota.
-
-For a service that cannot reach the interactive browser, refresh a protected cache periodically from the user session:
-
-```powershell
-.\bin\bailian-quota.exe --json --timeout 120s --cache-file C:\ProgramData\cpa-qwen-quota\qwen-quota.json
-```
-
-Then set `command-args: ["--json", "--cache-only", "--cache-file", "C:/ProgramData/cpa-qwen-quota/qwen-quota.json", "--max-age", "45m"]`. Cache-only never starts a browser and fails honestly for missing, invalid or stale readings. Refresh buttons rerun the configured CLI; in cache-only mode they reload the last observation, **not** the console. The page always shows the CLI's `observedAt`. Old caches without a subscription period remain readable but cannot reveal remaining plan days until a successful console refresh by the rebuilt CLI.
+This is supplementary Qwen helper/plugin evidence only, **not Manager -> SQLite -> actual Core end-to-end acceptance or full functionality**. Core's authority guard remains unchanged. No real credentials/config/provider access, deployment or big gates were used for this slice.
 
 ## Testing
 
@@ -307,10 +142,10 @@ Tests use dummy keys and mocked HTTP/CLI processes. Live acceptance must use an 
 
 - CLIProxyAPI core v8.0.15's management `/plugins` response does not expose `auth_provider` or `executor` capability booleans, and its `quota_provider` field is the provider identifier string. The native registration envelope declares the booleans; credential/model/execution/quota endpoints demonstrate behavior. This is a host response-schema limitation, not a reason to invent endpoint fields.
 - No OAuth flow or refresh token: these are manually configured plan keys. Refresh preserves the credential rather than inventing a token.
-- Exhausted quota produces the upstream error, not a successful completion. The acceptance account's monthly quota is 100% used, resetting `2026-10-18T00:00:00+08:00`; a live **429** is expected until reset.
-- Quota requires a separate console login and is not automatically associated with each API key's account. `bl` depends on the official CLI's monthly response schema and persisted console credentials; browser mode additionally depends on private console RPC schemas and browser availability.
-- Browser mode needs an already logged-in connected browser and temporarily navigates a no-focus session. Service/session-0 deployments may require cookie mode.
-- Coding Plan optional enrichment is best-effort; successful public model discovery does not validate keys.
+- Exhausted inference quota produces the upstream error, not a successful completion. Historical account readings are not current quota or ownership evidence.
+- Read-only query parsing is implemented, but selected-key -> exact Coding Plan/account -> query-principal binding remains unverified. Native policy quota stays `needs_configuration` until a trustworthy verifier exists.
+- The Coding Plan lane does not support legacy browser/cookie/BL/cache fallback or implicit enrollment. Separate pre-enrollment and future real acceptance need explicit authorization.
+- Coding Plan is the sole credential quota product, not optional enrichment. Successful public model discovery does not validate keys.
 - Removed keys may leave host-managed credential files; remove/disable those via the host management flow. A credential file deleted while the host is running is **not** recreated until the next host restart — the plugin materialises credentials from config at registration, so delete + restart if you need a clean single credential.
 - Initial fallback models may not be available under every plan/region. Client formats supported here are Chat Completions and Messages, not Responses.
 
