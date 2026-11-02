@@ -6,13 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"sync"
 	"syscall"
-	"time"
 )
 
-func blCommand(ctx context.Context, path string, args ...string) (*exec.Cmd, error) {
+func blCommand(ctx context.Context, path string, args ...string) (*windowsBLCommand, error) {
 	var cmd *exec.Cmd
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".cmd", ".bat":
@@ -27,16 +26,63 @@ func blCommand(ctx context.Context, path string, args ...string) (*exec.Cmd, err
 	default:
 		cmd = exec.CommandContext(ctx, path, args...)
 	}
-	// Killing just the npm shim leaves node running with inherited pipes.
-	// Terminate only this invocation's process tree within a bounded interval.
-	cmd.Cancel = func() error {
-		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		killer := filepath.Join(os.Getenv("SystemRoot"), "System32", "taskkill.exe")
-		if err := exec.CommandContext(cleanup, killer, "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F").Run(); err == nil {
-			return nil
-		}
-		return cmd.Process.Kill()
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	return cmd, nil
+	// Assign the suspended process to its private job before any shim/CLI code
+	// can create descendants. No breakaway flag is enabled on the job.
+	cmd.SysProcAttr.CreationFlags |= 0x00000004 // CREATE_SUSPENDED
+	cmd.SysProcAttr.HideWindow = true
+	return &windowsBLCommand{Cmd: cmd, ctx: ctx}, nil
+}
+
+type windowsBLCommand struct {
+	*exec.Cmd
+	ctx context.Context
+}
+
+func (cmd *windowsBLCommand) Run() (err error) {
+	job, err := newBLJob()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := job.close(); closeErr != nil {
+			err = closeErr
+		}
+	}()
+	// CommandContext may invoke Cancel as soon as Start succeeds. Serialize it
+	// with assignment/resume so cancellation cannot race uncontained startup.
+	var startup sync.Mutex
+	cmd.Cancel = func() error {
+		startup.Lock()
+		defer startup.Unlock()
+		return job.terminate()
+	}
+	startup.Lock()
+	if err := cmd.Start(); err != nil {
+		startup.Unlock()
+		return err
+	}
+	setupErr := job.assign(uint32(cmd.Process.Pid))
+	if setupErr == nil {
+		setupErr = cmd.ctx.Err()
+	}
+	if setupErr == nil {
+		setupErr = resumeBLProcess(uint32(cmd.Process.Pid))
+	}
+	if setupErr != nil {
+		// Stop the job even if resume was attempted. A root not yet assigned
+		// is still suspended and cannot have created an uncontained child.
+		setupErr = errors.Join(setupErr, job.terminate(), cmd.Process.Kill())
+	}
+	startup.Unlock()
+	waitErr := cmd.Wait()
+	stopErr := job.terminate()
+	if lifecycleErr := errors.Join(setupErr, stopErr, job.reap()); lifecycleErr != nil {
+		// Do not wrap an ExitError here: the legacy payload parser tolerates
+		// one specific Windows teardown exit, never a lifecycle failure.
+		return lifecycleErr
+	}
+	return waitErr
 }
