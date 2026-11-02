@@ -113,17 +113,17 @@ func managementUsage(t *testing.T, m *Manager, body string) (pluginapi.Managemen
 }
 
 func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
-	m := managementCommandManager(t, "success")
+	m := managementCommandManager(t, "coding")
 	resp, cards := managementUsage(t, m, `{}`)
 	if resp.StatusCode != 200 || len(cards) != len(m.cfg.APIKeys) || resp.Headers.Get("Content-Type") != "application/json" {
 		t.Fatalf("wrong cards: %s", resp.Body)
 	}
 	card := cards[0]
-	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.Plan != "Token Plan 个人版 Standard" || card.PlanStatus != "生效中" || card.ObservedAt != "2026-10-08T00:00:00+08:00" || card.Error != nil {
+	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.QueryStatus != "success" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") {
 		t.Fatalf("wrong card: %#v", card)
 	}
-	if len(card.Windows) != 1 || card.Windows[0].UsedPercent != 100 || card.Windows[0].RemainingPercent != 0 || card.Windows[0].ResetTime != "2026-10-18T00:00:00+08:00" || card.Windows[0].ResetsInDays == nil || len(card.Metrics) != 1 {
-		t.Fatalf("wrong reading: %#v", card)
+	if len(card.Windows) != 0 || len(card.Metrics) != 0 || card.Plan != "" || card.PlanStatus != "" || card.ObservedAt != "" {
+		t.Fatalf("account query incorrectly attributed to selected key: %#v", card)
 	}
 	if card.PlanEnd != "" || card.DaysLeft != nil {
 		t.Fatal("invented subscription period")
@@ -140,29 +140,23 @@ func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
 }
 
 func TestManagementQuotaUsageCLIPlanPeriodAndMetricsOnly(t *testing.T) {
-	m := managementCommandManager(t, "period")
-	before := time.Now()
-	resp, cards := managementUsage(t, m, `{}`)
-	after := time.Now()
-	if resp.StatusCode != 200 || len(cards) == 0 {
-		t.Fatalf("missing period card: %s", resp.Body)
-	}
-	card := cards[0]
-	if card.PlanStart != "2026-09-17T18:11:24+08:00" || card.PlanEnd != "2027-09-18T00:00:00+08:00" || card.DaysLeft == nil || card.Error != nil {
-		t.Fatalf("missing CLI period: %s", resp.Body)
-	}
-	if *card.DaysLeft != *daysUntil(card.PlanEnd, before) && *card.DaysLeft != *daysUntil(card.PlanEnd, after) {
-		t.Fatal("did not recompute current remaining days")
-	}
-	m = managementCommandManager(t, "metrics-only")
-	resp, cards = managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) == 0 || cards[0].Error != nil || len(cards[0].Windows) != 0 || len(cards[0].Metrics) != 1 {
-		t.Fatalf("metrics-only reading fabricated windows: %s", resp.Body)
+	// Old Token Plan subscription periods and cash-like metrics no longer
+	// satisfy the Coding Plan credential contract. Keep both regressions.
+	for _, mode := range []string{"period", "metrics-only"} {
+		m := managementCommandManager(t, mode)
+		resp, cards := managementUsage(t, m, `{}`)
+		if resp.StatusCode != 200 || len(cards) == 0 {
+			t.Fatalf("missing error card: %s", resp.Body)
+		}
+		card := cards[0]
+		if card.Error == nil || !strings.Contains(*card.Error, "coding_plan_helper_protocol_required") || card.PlanStart != "" || card.PlanEnd != "" || card.DaysLeft != nil || len(card.Windows) != 0 || len(card.Metrics) != 0 {
+			t.Fatalf("legacy product fabricated a Coding Plan reading: %s", resp.Body)
+		}
 	}
 }
 
 func TestManagementQuotaUsageFailuresAreCardsNotFakeReadings(t *testing.T) {
-	for mode, want := range map[string]string{"failure": "ConsoleNeedLogin: CLI says login required", "zero-error": "ConsoleNeedLogin: CLI says login required", "empty": "no windows or metrics", "garbage": "CLI garbage diagnostic"} {
+	for mode, want := range map[string]string{"failure": "ConsoleNeedLogin: CLI says login required", "zero-error": "ConsoleNeedLogin: CLI says login required", "empty": "coding_plan_helper_protocol_required", "garbage": "CLI garbage diagnostic"} {
 		t.Run(mode, func(t *testing.T) {
 			m := managementCommandManager(t, mode)
 			resp, cards := managementUsage(t, m, `{}`)
@@ -305,7 +299,7 @@ func TestManagementNoSecretsInFailuresAndSuccessFields(t *testing.T) {
 }
 
 func TestManagementQuotaUsageMultipleOwnedCredentials(t *testing.T) {
-	m := managementCommandManager(t, "success")
+	m := managementCommandManager(t, "coding")
 	m.cfg.APIKeys = append(m.cfg.APIKeys, config.APIKey{Value: "dummy-second-key", Name: "Second Qwen"})
 	entries := []pluginapi.HostAuthFileEntry{}
 	for i, key := range m.cfg.APIKeys {
@@ -314,7 +308,7 @@ func TestManagementQuotaUsageMultipleOwnedCredentials(t *testing.T) {
 	}
 	m.bridge = NewHostBridge(func(string, []byte) ([]byte, error) { return hostOK(hostAuthListResponse{Files: entries}), nil })
 	resp, cards := managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) != 2 || cards[1].Label != "Second Qwen" || cards[1].Plan != cards[0].Plan {
+	if resp.StatusCode != 200 || len(cards) != 2 || cards[1].Label != "Second Qwen" || cards[1].Plan != "" || cards[0].Plan != "" || cards[0].Error == nil || cards[1].Error == nil || len(cards[0].Windows) != 0 || len(cards[1].Windows) != 0 {
 		t.Fatalf("lost owned credentials: %s", resp.Body)
 	}
 	resp, cards = managementUsage(t, m, `{"auth_index":"index-1"}`)

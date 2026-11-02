@@ -13,6 +13,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 
+	"qwen-cliproxyapi/internal/bailianquota"
 	"qwen-cliproxyapi/internal/config"
 )
 
@@ -49,8 +50,8 @@ func (b *boundedOutput) snapshot() ([]byte, bool) {
 	return append([]byte(nil), b.buf.Bytes()...), b.overflow
 }
 
-// FetchQuota never passes the host-selected plan API key to the CLI. The CLI
-// reads console login state; it cannot prove the browser account owns this key.
+// FetchQuota queries Coding Plan only. The explicit console token cannot prove
+// ownership of the host-selected key; parsed counts must not become policy data.
 func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchRequest) (pluginapi.QuotaFetchResponse, error) {
 	empty := pluginapi.QuotaFetchResponse{}
 	if req.Provider != ProviderID {
@@ -63,39 +64,48 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 	m.mu.RLock()
 	cfg := m.cfg
 	m.mu.RUnlock()
-	raw, err := fetchCommandQuota(ctx, cfg, key)
+	_, err := fetchCommandQuota(ctx, cfg, key)
 	if err != nil {
 		return empty, err
 	}
-	result, err := normalizeCommandQuota(raw, cfg.DisplayName)
-	if err != nil {
-		return empty, err
-	}
-	if result.Subscription != nil {
-		result.Subscription.Plan = redactSecrets(result.Subscription.Plan, cfg, key)
-	}
-	for i := range result.Groups {
-		result.Groups[i].DisplayName = redactSecrets(result.Groups[i].DisplayName, cfg, key)
-		for j := range result.Groups[i].Buckets {
-			result.Groups[i].Buckets[j].Window = redactSecrets(result.Groups[i].Buckets[j].Window, cfg, key)
-		}
-	}
-	for i := range result.Summary {
-		metric := &result.Summary[i]
-		metric.Key = redactSecrets(metric.Key, cfg, key)
-		metric.Label = redactSecrets(metric.Label, cfg, key)
-		metric.Unit = redactSecrets(metric.Unit, cfg, key)
-		metric.Currency = redactSecrets(metric.Currency, cfg, key)
-	}
-	return result, nil
+	return empty, fmt.Errorf("needs_configuration: account_authority_unverified")
 }
 
 // The native quota API and embedded page share command execution, validation and
 // error handling, so the page cannot manufacture a reading rejected by the API.
-func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (commandQuota, error) {
-	empty := commandQuota{}
+func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (bailianquota.CodingPlanResult, error) {
+	empty := bailianquota.CodingPlanResult{}
 	if cfg.QuotaSource != "command" || cfg.Command == "" || cfg.CommandTimeout <= 0 {
 		return empty, fmt.Errorf("quota command is not configured")
+	}
+	sources, protocols := 0, 0
+	for i, arg := range cfg.CommandArgs {
+		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if !hasValue && i+1 < len(cfg.CommandArgs) {
+			value = cfg.CommandArgs[i+1]
+		}
+		switch name {
+		case "source":
+			sources++
+			if value == "coding-plan" {
+				continue
+			}
+		case "protocol":
+			protocols++
+			if value == bailianquota.CodingPlanProtocol {
+				continue
+			}
+		case "bl-path", "browser", "cookie", "cookie-file", "cache-file", "cache-only", "max-age", "check", "token", "account", "verified":
+		default:
+			continue // The reviewed helper rejects unknown flags before I/O.
+		}
+		return empty, fmt.Errorf("needs_configuration: coding_plan_readonly_configuration_required")
+	}
+	if sources != 1 || protocols != 1 {
+		return empty, fmt.Errorf("needs_configuration: coding_plan_readonly_configuration_required")
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.CommandTimeout)
 	defer cancel()
@@ -108,7 +118,7 @@ func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (comm
 	runErr := cmd.Run()
 	out, outOverflow := stdout.snapshot()
 	errOut, errOverflow := stderr.snapshot()
-	safeError := func(message string) (commandQuota, error) {
+	safeError := func(message string) (bailianquota.CodingPlanResult, error) {
 		return empty, fmt.Errorf("%s", boundedDiagnostic([]byte(redactSecrets(message, cfg, key))))
 	}
 	if outOverflow || errOverflow {
@@ -120,11 +130,8 @@ func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (comm
 	if runErr != nil {
 		return safeError(commandErrorText(out, errOut, "quota command failed"))
 	}
-	var raw commandQuota
-	if json.Unmarshal(out, &raw) != nil {
-		return safeError(commandErrorText(out, errOut, "quota command stdout is not valid contract JSON"))
-	}
-	if _, err := normalizeCommandQuota(raw, cfg.DisplayName); err != nil {
+	raw, err := bailianquota.DecodeCodingPlanResult(out)
+	if err != nil {
 		return safeError(commandErrorText(out, errOut, err.Error()))
 	}
 	return raw, nil

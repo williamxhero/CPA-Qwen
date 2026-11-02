@@ -1,5 +1,7 @@
 # bl quota deployment record
 
+> Historical standalone Token Plan tooling only. Since SPEC92's 2026-11-02 canonical classification, CPA credential management must use Coding Plan, never this BL/cache/browser lane. It is rejected before execution by the credential quota boundary. See `docs/coding-plan-quota.md`; this historical record is not current setup guidance or proof of key ownership.
+
 SPEC: [williamxhero/qwen-cliproxyapi #1](https://github.com/williamxhero/qwen-cliproxyapi/issues/1).
 Verification date: **2026-10-14**. This is a partial delivery record, **not evidence of a completed production deployment**.
 
