@@ -148,8 +148,15 @@ func parseCodingPlan(body []byte, observed time.Time) (CodingPlanResult, error) 
 	if !ok {
 		return empty, failure("invalid_quota", "coding_plan_quota_info_missing")
 	}
-	result := CodingPlanResult{Protocol: CodingPlanProtocol, Product: "coding-plan", QueryStatus: "success", AuthorityStatus: "needs_configuration", Reason: "account_authority_unverified", ObservedAt: observed.UTC().Format(time.RFC3339Nano)}
-	result.InstanceType, _ = selected["instanceType"].(string)
+	instanceType, _ := selected["instanceType"].(string)
+	return codingPlanReading(quota, instanceType, observed)
+}
+
+// Both transports use the same native-count/millisecond validation. Neither
+// successful transport can assert selected-key ownership or account authority.
+func codingPlanReading(quota map[string]any, instanceType string, observed time.Time) (CodingPlanResult, error) {
+	empty := CodingPlanResult{}
+	result := CodingPlanResult{Protocol: CodingPlanProtocol, Product: "coding-plan", QueryStatus: "success", AuthorityStatus: "needs_configuration", Reason: "account_authority_unverified", ObservedAt: observed.UTC().Format(time.RFC3339Nano), InstanceType: instanceType}
 	for _, field := range []struct{ prefix, window string }{{"per5Hour", "5h"}, {"perWeek", "week"}, {"perBillMonth", "billing_month"}} {
 		used, errUsed := nativeCount(quota[field.prefix+"UsedQuota"])
 		total, errTotal := nativeCount(quota[field.prefix+"TotalQuota"])
