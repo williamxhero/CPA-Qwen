@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,8 +51,8 @@ func (b *boundedOutput) snapshot() ([]byte, bool) {
 	return append([]byte(nil), b.buf.Bytes()...), b.overflow
 }
 
-// FetchQuota queries Coding Plan only. The explicit console token cannot prove
-// ownership of the host-selected key; parsed counts must not become policy data.
+// FetchQuota queries Coding Plan only. A console token or CLI account cannot
+// prove ownership of the host-selected key; counts must not become policy data.
 func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchRequest) (pluginapi.QuotaFetchResponse, error) {
 	empty := pluginapi.QuotaFetchResponse{}
 	if req.Provider != ProviderID {
@@ -79,6 +80,8 @@ func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (bail
 		return empty, fmt.Errorf("quota command is not configured")
 	}
 	sources, protocols := 0, 0
+	cliPath, directConfig, cacheOnly := false, false, false
+	cacheFile := ""
 	for i, arg := range cfg.CommandArgs {
 		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
 		if !strings.HasPrefix(arg, "-") {
@@ -98,13 +101,40 @@ func fetchCommandQuota(ctx context.Context, cfg config.Config, key string) (bail
 			if value == bailianquota.CodingPlanProtocol {
 				continue
 			}
-		case "bl-path", "browser", "cookie", "cookie-file", "cache-file", "cache-only", "max-age", "check", "token", "account", "verified":
+		case "bl-path":
+			cliPath = true
+			if strings.TrimSpace(value) != "" {
+				continue
+			}
+		case "token-file", "console-region", "console-site":
+			directConfig = true
+			continue
+		case "cache-file":
+			cacheFile = value
+			if strings.TrimSpace(value) != "" {
+				continue
+			}
+		case "cache-only":
+			if !hasValue {
+				cacheOnly = true
+				continue
+			}
+			parsed, err := strconv.ParseBool(value)
+			if err == nil {
+				cacheOnly = parsed
+				continue
+			}
+		case "max-age":
+			if age, err := time.ParseDuration(value); err == nil && age > 0 {
+				continue
+			}
+		case "browser", "cookie", "cookie-file", "check", "token", "account", "verified":
 		default:
 			continue // The reviewed helper rejects unknown flags before I/O.
 		}
 		return empty, fmt.Errorf("needs_configuration: coding_plan_readonly_configuration_required")
 	}
-	if sources != 1 || protocols != 1 {
+	if sources != 1 || protocols != 1 || cliPath && directConfig || cacheOnly && cacheFile == "" {
 		return empty, fmt.Errorf("needs_configuration: coding_plan_readonly_configuration_required")
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.CommandTimeout)
