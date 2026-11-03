@@ -59,10 +59,15 @@ plugins:
       allow-http: false
       quota-source: command
       command: "D:\\WILL\\AGENT\\CPA\\qwen-cliproxyapi\\bin\\bailian-quota.exe"
-      command-args: ["--protocol", "qwen-coding-plan-v1", "--source", "coding-plan", "--token-file", "C:/protected/example-console-token.txt", "--console-region", "cn-beijing", "--console-site", "domestic", "--json"]
+      command-args: ["--protocol", "qwen-coding-plan-v1", "--source", "coding-plan", "--bl-path", "C:/path/to/bl.cmd", "--cache-file", "C:/path/to/qwen-coding-plan-cache.json", "--json"]
       command-timeout: "90s"
       display-name: "阿里云百炼额度（CLI）"
-      quota-resource-ids: ["<current-CPA-resource-id>"]
+      quota-resource-bindings:
+        - resource-id: "<current-CPA-resource-id>"
+          identity-version: 1
+          credential-version: 1
+          config-version: 1
+          membership-version: 1
 ```
 
 ### Configuration table
@@ -82,7 +87,7 @@ plugins:
 | `quota-source` | `command` | External CLI is the only quota source. |
 | `command` | Required | Executable path; **not** a shell command. |
 | `command-args` | Must be explicit for quota | Require `--protocol qwen-coding-plan-v1 --source coding-plan` with `--bl-path` + `--cache-file` for refresh, or `--cache-only` + `--cache-file` + positive `--max-age`; no legacy defaults, shell, pipes or interpolation. |
-| `quota-resource-ids` | Required for policy use | Explicit CPA resource IDs enrolled for this CLI/cache source; Core rejects un-enrolled credentials and never assigns one CLI account to every key automatically. |
+| `quota-resource-bindings` | Required for policy use | Explicit CPA resource target generations enrolled for this CLI/cache source. Each entry must match the resource ID plus identity, credential, config and membership versions; Core rejects stale or un-enrolled credentials and never assigns one CLI account to every key automatically. |
 | `command-timeout` | `90s` | Hard quota command deadline. |
 | `display-name` | `阿里云百炼额度（CLI）` | Quota group display name. |
 

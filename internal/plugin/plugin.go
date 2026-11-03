@@ -216,7 +216,7 @@ func pluginConfigFields() []pluginapi.ConfigField {
 		{Name: "command", Type: pluginapi.ConfigFieldTypeString, Description: "Required quota executable path; executed directly without a shell."},
 		{Name: "command-args", Type: pluginapi.ConfigFieldTypeArray, Description: "Argument slice; default [--json]."},
 		{Name: "command-timeout", Type: pluginapi.ConfigFieldTypeString, Description: "Hard command deadline; default 90s."},
-		{Name: "quota-resource-ids", Type: pluginapi.ConfigFieldTypeArray, Description: "Explicit CPA resource IDs enrolled for this Coding Plan CLI/cache source."},
+		{Name: "quota-resource-bindings", Type: pluginapi.ConfigFieldTypeArray, Description: "Explicit CPA resource target bindings enrolled for this Coding Plan CLI/cache source; each entry requires resource-id, identity-version, credential-version, config-version and membership-version."},
 		{Name: "display-name", Type: pluginapi.ConfigFieldTypeString, Description: "Quota group display name."},
 	}
 }
