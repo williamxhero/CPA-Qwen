@@ -62,6 +62,7 @@ plugins:
       command-args: ["--protocol", "qwen-coding-plan-v1", "--source", "coding-plan", "--token-file", "C:/protected/example-console-token.txt", "--console-region", "cn-beijing", "--console-site", "domestic", "--json"]
       command-timeout: "90s"
       display-name: "阿里云百炼额度（CLI）"
+      quota-resource-ids: ["<current-CPA-resource-id>"]
 ```
 
 ### Configuration table
@@ -80,7 +81,8 @@ plugins:
 | `allow-http` | `false` | HTTP only for local mocks when explicitly enabled. |
 | `quota-source` | `command` | External CLI is the only quota source. |
 | `command` | Required | Executable path; **not** a shell command. |
-| `command-args` | Must be explicit for quota | Require `--protocol qwen-coding-plan-v1 --source coding-plan` and explicit token-file/region/site; no legacy defaults, shell, pipes or interpolation. |
+| `command-args` | Must be explicit for quota | Require `--protocol qwen-coding-plan-v1 --source coding-plan` with `--bl-path` + `--cache-file` for refresh, or `--cache-only` + `--cache-file` + positive `--max-age`; no legacy defaults, shell, pipes or interpolation. |
+| `quota-resource-ids` | Required for policy use | Explicit CPA resource IDs enrolled for this CLI/cache source; Core rejects un-enrolled credentials and never assigns one CLI account to every key automatically. |
 | `command-timeout` | `90s` | Hard quota command deadline. |
 | `display-name` | `阿里云百炼额度（CLI）` | Quota group display name. |
 
