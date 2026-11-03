@@ -105,7 +105,7 @@ func TestCodingQuotaQuerySuccessIsNotSelectedKeyAuthority(t *testing.T) {
 	}
 	card := wire.Cards[0]
 	if card.QueryStatus != "success" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") || len(card.Windows) != 0 || len(card.Metrics) != 0 {
-		t.Fatalf("parsed console query must remain unbound, never a key-attributed reading: %s", resp.Body)
+		t.Fatalf("direct-token query must remain unbound and separate from CLI policy data: %s", resp.Body)
 	}
 	operations, err := os.ReadFile(capture)
 	if err != nil || string(operations) != `["zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"]` {
@@ -127,6 +127,12 @@ func TestCodingQuotaLaneRejectsForgedAuthorityAndLegacyContract(t *testing.T) {
 			req.Attributes["account"] = "user-entered-account"
 			req.Attributes["verified"] = "true"
 			result, err := m.FetchQuota(context.Background(), req)
+			if mode == "coding" {
+				if err != nil || result.Subscription == nil || len(result.Groups) != 1 || len(result.Groups[0].Buckets) != 3 {
+					t.Fatalf("configured CLI result was not normalized: %#v %v", result, err)
+				}
+				return
+			}
 			if err == nil || !strings.Contains(err.Error(), "needs_configuration") || result.Subscription != nil || len(result.Groups) != 0 || len(result.Summary) != 0 {
 				t.Fatalf("unverified authority became policy quota: %#v %v", result, err)
 			}

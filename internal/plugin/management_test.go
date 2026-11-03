@@ -119,10 +119,10 @@ func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
 		t.Fatalf("wrong cards: %s", resp.Body)
 	}
 	card := cards[0]
-	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.QueryStatus != "success" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") {
+	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.QueryStatus != "success" || card.AuthorityStatus != "configured_cli_profile" || card.Error != nil {
 		t.Fatalf("wrong card: %#v", card)
 	}
-	if len(card.Windows) != 0 || len(card.Metrics) != 0 || card.Plan != "" || card.PlanStatus != "" || card.ObservedAt != "" {
+	if len(card.Windows) != 3 || len(card.Metrics) != 0 || card.Plan != "coding-plan" || card.ObservedAt == "" {
 		t.Fatalf("account query incorrectly attributed to selected key: %#v", card)
 	}
 	if card.PlanEnd != "" || card.DaysLeft != nil {
@@ -308,7 +308,7 @@ func TestManagementQuotaUsageMultipleOwnedCredentials(t *testing.T) {
 	}
 	m.bridge = NewHostBridge(func(string, []byte) ([]byte, error) { return hostOK(hostAuthListResponse{Files: entries}), nil })
 	resp, cards := managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) != 2 || cards[1].Label != "Second Qwen" || cards[1].Plan != "" || cards[0].Plan != "" || cards[0].Error == nil || cards[1].Error == nil || len(cards[0].Windows) != 0 || len(cards[1].Windows) != 0 {
+	if resp.StatusCode != 200 || len(cards) != 2 || cards[1].Label != "Second Qwen" || cards[1].Plan != "coding-plan" || cards[0].Plan != "coding-plan" || cards[0].Error != nil || cards[1].Error != nil || len(cards[0].Windows) != 3 || len(cards[1].Windows) != 3 {
 		t.Fatalf("lost owned credentials: %s", resp.Body)
 	}
 	resp, cards = managementUsage(t, m, `{"auth_index":"index-1"}`)

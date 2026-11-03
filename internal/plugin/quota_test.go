@@ -92,7 +92,7 @@ func commandManager(t *testing.T, mode string) *Manager {
 	m := NewManager(nil)
 	m.cfg = providerConfig(t)
 	m.cfg.Command = executable
-	m.cfg.CommandArgs = []string{"-test.run=^TestQuotaCommandHelper$", "--", "--quota-stub", mode, "--protocol", "qwen-coding-plan-v1", "--source", "coding-plan"}
+	m.cfg.CommandArgs = []string{"-test.run=^TestQuotaCommandHelper$", "--", "--quota-stub", mode, "--protocol", "qwen-coding-plan-v1", "--source", "coding-plan", "--bl-path", "synthetic-bl", "--cache-file", "synthetic-cache"}
 	m.cfg.CommandTimeout = 3 * time.Second
 	return m
 }

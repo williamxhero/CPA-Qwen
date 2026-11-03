@@ -53,7 +53,7 @@ func TestCLIQuotaCacheOnlyOptionsStayUnbound(t *testing.T) {
 		"--cache-file=C:/synthetic cache/coding quota.json", "--max-age", "45m",
 	}
 	resp, cards := managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].QueryStatus != "success" || cards[0].AuthorityStatus != "needs_configuration" || cards[0].Error == nil || !strings.Contains(*cards[0].Error, "account_authority_unverified") || len(cards[0].Windows) != 0 || len(cards[0].Metrics) != 0 {
+	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].QueryStatus != "success" || cards[0].AuthorityStatus != "configured_cli_profile" || cards[0].Error != nil || len(cards[0].Windows) != 3 || len(cards[0].Metrics) != 0 {
 		t.Fatalf("explicit cached query was rejected or became bound credential quota: %s", resp.Body)
 	}
 }
@@ -118,11 +118,11 @@ func TestCLIQuotaExplicitOptionsReachManagementWithoutKeyAuthority(t *testing.T)
 		t.Fatalf("explicit Coding Plan CLI options did not reach a successful query: %s", resp.Body)
 	}
 	card := cards[0]
-	if card.AuthIndex != "host-index-0" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") || len(card.Windows) != 0 || len(card.Metrics) != 0 || card.Plan != "" || card.ObservedAt != "" {
-		t.Fatalf("CLI-account query was falsely attributed to a credential: %s", resp.Body)
+	if card.AuthIndex != "host-index-0" || card.AuthorityStatus != "configured_cli_profile" || card.Error != nil || len(card.Windows) != 3 || len(card.Metrics) != 0 || card.Plan != "coding-plan" || card.ObservedAt == "" {
+		t.Fatalf("configured CLI query was not rendered as a scoped reading: %s", resp.Body)
 	}
 	result, err := m.FetchQuota(context.Background(), quotaRequest())
-	if err == nil || !strings.Contains(err.Error(), "account_authority_unverified") || result.Subscription != nil || len(result.Groups) != 0 || len(result.Summary) != 0 {
-		t.Fatalf("unbound CLI-account query became policy quota: %#v %v", result, err)
+	if err != nil || result.Subscription == nil || len(result.Groups) != 1 || len(result.Groups[0].Buckets) != 3 {
+		t.Fatalf("configured CLI query was not normalized: %#v %v", result, err)
 	}
 }
