@@ -78,6 +78,7 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 
 func codingPlanCLIArgs(args []string) bool {
 	seenSource, seenProtocol, seenCLI, seenCache, seenCacheOnly, seenMaxAge, seenToken := false, false, false, false, false, false, false
+	cacheOnlyValue := ""
 	for i := 0; i < len(args); i++ {
 		arg := strings.TrimSpace(args[i])
 		if !strings.HasPrefix(arg, "--") {
@@ -99,13 +100,15 @@ func codingPlanCLIArgs(args []string) bool {
 			seenCache = seenCache || value != ""
 		case "cache-only":
 			seenCacheOnly = true
+			cacheOnlyValue = value
 		case "max-age":
 			seenMaxAge = seenMaxAge || value != ""
 		case "token-file", "console-site", "console-region":
 			seenToken = true
 		}
 	}
-	return seenSource && seenProtocol && seenCache && (seenCLI || seenCacheOnly && seenMaxAge) && !seenToken
+	cacheOnlyRequested := seenCacheOnly && (cacheOnlyValue == "" || strings.EqualFold(cacheOnlyValue, "true"))
+	return seenSource && seenProtocol && seenCache && (seenCLI || cacheOnlyRequested && seenMaxAge) && !seenToken
 }
 
 func normalizeCodingPlanQuota(raw bailianquota.CodingPlanResult, displayName string) (pluginapi.QuotaFetchResponse, error) {
