@@ -104,7 +104,7 @@ func TestQuotaPageIncludesPanelCredential(t *testing.T) {
 	entries = append(entries, pluginapi.HostAuthFileEntry{Provider: "qwen", ID: "panel-id", Label: "Panel", AuthIndex: "panel-index"})
 	m.bridge = NewHostBridge(func(string, []byte) ([]byte, error) { return hostOK(hostAuthListResponse{Files: entries}), nil })
 	resp, cards := managementUsage(t, m, `{"auth_index":"panel-index"}`)
-	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].Label != "Panel" || cards[0].Error == nil || cards[0].QueryStatus != "success" || cards[0].AuthorityStatus != "needs_configuration" || len(cards[0].Windows) != 0 || len(cards[0].Metrics) != 0 {
+	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].Label != "Panel" || cards[0].Error != nil || cards[0].QueryStatus != "success" || cards[0].AuthorityStatus != "configured_cli_profile" || len(cards[0].Windows) != 3 || len(cards[0].Metrics) != 0 {
 		t.Fatalf("panel credential lost or unbound console quota attributed to it: %s", resp.Body)
 	}
 }

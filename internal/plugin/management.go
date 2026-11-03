@@ -120,18 +120,35 @@ func (m *Manager) HandleManagement(ctx context.Context, req pluginapi.Management
 	if len(cards) > 0 {
 		// One read-only query can report its parsing status, but cannot attribute
 		// account-scoped counts to any of these keys without ownership evidence.
-		_, refreshErr := fetchCommandQuota(ctx, cfg, "")
+		reading, refreshErr := fetchCommandQuota(ctx, cfg, "")
+		var normalized pluginapi.QuotaFetchResponse
+		if refreshErr == nil && codingPlanCLIArgs(cfg.CommandArgs) {
+			normalized, refreshErr = normalizeCodingPlanQuota(reading, cfg.DisplayName)
+		}
 		for i := range cards {
-			cards[i].AuthorityStatus = "needs_configuration"
 			if refreshErr != nil {
+				cards[i].AuthorityStatus = "needs_configuration"
 				cards[i].QueryStatus = "failed"
 				message := refreshErr.Error()
 				cards[i].Error = &message
 				continue
 			}
+			if !codingPlanCLIArgs(cfg.CommandArgs) {
+				cards[i].AuthorityStatus = "needs_configuration"
+				cards[i].QueryStatus = "success"
+				message := "needs_configuration: account_authority_unverified"
+				cards[i].Error = &message
+				continue
+			}
 			cards[i].QueryStatus = "success"
-			message := "needs_configuration: account_authority_unverified"
-			cards[i].Error = &message
+			cards[i].AuthorityStatus = normalized.AccountProvenance
+			cards[i].Plan = "coding-plan"
+			cards[i].ObservedAt = time.UnixMilli(normalized.ObservedAtMS).UTC().Format(time.RFC3339Nano)
+			cards[i].Windows = make([]quotaWindow, 0, len(normalized.Groups[0].Buckets))
+			for _, bucket := range normalized.Groups[0].Buckets {
+				cards[i].Windows = append(cards[i].Windows, quotaWindow{Window: bucket.Window, UsedPercent: (1 - bucket.RemainingFraction) * 100, RemainingPercent: bucket.RemainingFraction * 100, ResetTime: bucket.ResetTime})
+			}
+			cards[i].Error = nil
 		}
 	}
 	return quotaJSON(http.StatusOK, struct {

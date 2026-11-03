@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"os/exec"
 	"strings"
 	"sync"
@@ -64,11 +65,79 @@ func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchReques
 	m.mu.RLock()
 	cfg := m.cfg
 	m.mu.RUnlock()
-	_, err := fetchCommandQuota(ctx, cfg, key)
+	reading, err := fetchCommandQuota(ctx, cfg, key)
 	if err != nil {
 		return empty, err
 	}
-	return empty, fmt.Errorf("needs_configuration: account_authority_unverified")
+	if !codingPlanCLIArgs(cfg.CommandArgs) {
+		return empty, fmt.Errorf("needs_configuration: account_authority_unverified")
+	}
+	return normalizeCodingPlanQuota(reading, cfg.DisplayName)
+}
+
+func codingPlanCLIArgs(args []string) bool {
+	seenSource, seenProtocol, seenCLI, seenCache, seenCacheOnly, seenMaxAge, seenToken := false, false, false, false, false, false, false
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if !strings.HasPrefix(arg, "--") {
+			continue
+		}
+		name, value, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
+		if !hasValue && i+1 < len(args) && !strings.HasPrefix(strings.TrimSpace(args[i+1]), "--") {
+			value = strings.TrimSpace(args[i+1])
+			i++
+		}
+		switch name {
+		case "source":
+			seenSource = seenSource || value == "coding-plan"
+		case "protocol":
+			seenProtocol = seenProtocol || value == bailianquota.CodingPlanProtocol
+		case "bl-path":
+			seenCLI = seenCLI || value != ""
+		case "cache-file":
+			seenCache = seenCache || value != ""
+		case "cache-only":
+			seenCacheOnly = true
+		case "max-age":
+			seenMaxAge = seenMaxAge || value != ""
+		case "token-file", "console-site", "console-region":
+			seenToken = true
+		}
+	}
+	return seenSource && seenProtocol && seenCache && (seenCLI || seenCacheOnly && seenMaxAge) && !seenToken
+}
+
+func normalizeCodingPlanQuota(raw bailianquota.CodingPlanResult, displayName string) (pluginapi.QuotaFetchResponse, error) {
+	if raw.QueryStatus != "success" || raw.AuthorityStatus != "needs_configuration" || len(raw.Windows) != 3 {
+		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota command returned an invalid Coding Plan result")
+	}
+	if strings.TrimSpace(displayName) == "" {
+		displayName = config.DefaultDisplayName
+	}
+	observed, err := time.Parse(time.RFC3339Nano, raw.ObservedAt)
+	if err != nil {
+		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota command returned an invalid Coding Plan observation time")
+	}
+	buckets := make([]pluginapi.QuotaBucket, 0, len(raw.Windows))
+	for _, window := range raw.Windows {
+		used, total, ok := decimalPair(window.Used, window.Total)
+		if !ok || total.Sign() == 0 || used.Cmp(total) > 0 || strings.TrimSpace(window.ResetTime) == "" {
+			return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota command returned an invalid Coding Plan window")
+		}
+		if _, err := time.Parse(time.RFC3339Nano, window.ResetTime); err != nil {
+			return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota command returned an invalid Coding Plan reset time")
+		}
+		remainingBig := new(big.Rat).SetFrac(new(big.Int).Sub(new(big.Int).Set(total), used), total)
+		remaining, _ := new(big.Float).SetPrec(256).SetRat(remainingBig).Float64()
+		buckets = append(buckets, pluginapi.QuotaBucket{Window: window.Window, RemainingFraction: remaining, ResetTime: window.ResetTime})
+	}
+	return pluginapi.QuotaFetchResponse{Subscription: &pluginapi.QuotaSubscription{Plan: "coding-plan"}, Groups: []pluginapi.QuotaGroup{{DisplayName: displayName, Buckets: buckets}}, ObservedAtMS: observed.UnixMilli(), TimestampProvenance: "local_cli_acquisition_time", Protocol: bailianquota.CodingPlanProtocol, AccountProvenance: "configured_cli_profile"}, nil
+}
+
+func decimalPair(used, total string) (*big.Int, *big.Int, bool) {
+	u, okU := new(big.Int).SetString(used, 10)
+	t, okT := new(big.Int).SetString(total, 10)
+	return u, t, okU && okT && used != "" && total != "" && !strings.HasPrefix(used, "-") && !strings.HasPrefix(total, "-")
 }
 
 // The native quota API and embedded page share command execution, validation and
