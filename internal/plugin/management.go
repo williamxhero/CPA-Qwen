@@ -121,9 +121,8 @@ func (m *Manager) HandleManagement(ctx context.Context, req pluginapi.Management
 		// One read-only query can report its parsing status, but cannot attribute
 		// account-scoped counts to any of these keys without ownership evidence.
 		reading, refreshErr := fetchCommandQuota(ctx, cfg, "")
-		var normalized pluginapi.QuotaFetchResponse
 		if refreshErr == nil && codingPlanCLIArgs(cfg.CommandArgs) {
-			normalized, refreshErr = normalizeCodingPlanQuota(reading, cfg.DisplayName)
+			_, refreshErr = normalizeCodingPlanQuota(reading, cfg.DisplayName)
 		}
 		for i := range cards {
 			if refreshErr != nil {
@@ -133,22 +132,14 @@ func (m *Manager) HandleManagement(ctx context.Context, req pluginapi.Management
 				cards[i].Error = &message
 				continue
 			}
-			if !codingPlanCLIArgs(cfg.CommandArgs) {
-				cards[i].AuthorityStatus = "needs_configuration"
-				cards[i].QueryStatus = "success"
-				message := "needs_configuration: account_authority_unverified"
-				cards[i].Error = &message
-				continue
-			}
+			// This deprecated management view has no Core resource binding or
+			// receipt context, so an account-scoped CLI result cannot be
+			// attributed to any selected key. Keep the query status visible but
+			// fail closed instead of distributing the same windows to every card.
 			cards[i].QueryStatus = "success"
-			cards[i].AuthorityStatus = normalized.AccountProvenance
-			cards[i].Plan = "coding-plan"
-			cards[i].ObservedAt = time.UnixMilli(normalized.ObservedAtMS).UTC().Format(time.RFC3339Nano)
-			cards[i].Windows = make([]quotaWindow, 0, len(normalized.Groups[0].Buckets))
-			for _, bucket := range normalized.Groups[0].Buckets {
-				cards[i].Windows = append(cards[i].Windows, quotaWindow{Window: bucket.Window, UsedPercent: (1 - bucket.RemainingFraction) * 100, RemainingPercent: bucket.RemainingFraction * 100, ResetTime: bucket.ResetTime})
-			}
-			cards[i].Error = nil
+			cards[i].AuthorityStatus = "needs_configuration"
+			message := "needs_configuration: account_authority_unverified"
+			cards[i].Error = &message
 		}
 	}
 	return quotaJSON(http.StatusOK, struct {

@@ -16,23 +16,26 @@ Expose one provider, **`qwen`**, using CLIProxyAPI's credential scheduler, rotat
 - Execution always uses the **credential selected by the host**, never the catalog's default key.
 - OpenAI Chat Completions and Anthropic Messages requests, tool calls, image parts and streaming SSE translation, adapted from the MIT reference.
 - Authenticated full catalog discovery, bare upstream model IDs by default, optional explicit prefix and last-good snapshot.
-- Strict Coding Plan helper protocol: three exact request-count windows, no arbitrary shell command or helper auth retry. Parsed query success is separate from selected-key authority; unverified results never become native policy quota.
+- Strict Coding Plan helper protocol: three exact request-count windows, no arbitrary shell command or helper auth retry. Native CLI/cache readings are candidates for Core validation, not selected-key ownership or policy authority.
 - Plugin-registered quota status API retains per-credential selection, with independent query/authority statuses. Missing key/account/plan proof remains `needs_configuration`; the embedded quota page is not advertised as a panel menu.
-- Standalone stdlib-only Go helper: explicit official Coding Plan CLI or pre-enrolled raw-token transport, plus an opt-in strict Coding Plan cache. Legacy Token Plan BL/browser/cookie tooling remains separate and is forbidden in the credential quota lane. Plugin acceptance of the new helper CLI/cache arguments is separate work, not implemented here.
+- Standalone stdlib-only Go helper: explicit official Coding Plan CLI or existing pre-enrolled raw-token transport, plus a strict Coding Plan cache. The plugin accepts explicit CLI/cache arguments; legacy Token Plan BL/browser/cookie tooling remains separate and is forbidden in the credential quota lane.
 
 ## Requirements
 
-- CLIProxyAPI **v8.0.0+** native plugin ABI.
-- Windows AMD64; Go 1.26.7+ and a GCC-compatible C compiler with `CGO_ENABLED=1` for the DLL.
-- A selected inference key. Coding Plan quota additionally requires an explicit pre-enrolled console token, region/site, and trustworthy ownership evidence (the last is not supplied by this slice). No browser or official CLI is needed for the read-only query.
+- CLIProxyAPI v8 native plugin ABI **and the SPEC92 observation-metadata SDK/Core integration**. The published v8.0.0 SDK alone lacks the fields used by this integration.
+- Windows AMD64; Go 1.26.10+ for the current integration Core and a GCC-compatible C compiler with `CGO_ENABLED=1` for the DLL.
+- A selected inference key. The native CLI/cache quota lane also requires an explicitly configured Coding Plan CLI/cache source and current Core resource enrollment with a valid receipt. This is local administrator enrollment, not independent proof of remote key/account ownership. The existing raw-token query remains unbound compatibility behavior, not a policy-authority alternative.
 
 ## Build
 
 ```powershell
 $env:CGO_ENABLED = '1'
-go build -buildmode=c-shared -o plugins/windows/amd64/qwen-cliproxyapi.dll .
-go build -o bin/bailian-quota.exe ./cmd/bailian-quota
+$mod = 'D:\path-outside-repository\qwen-test.mod'
+go build "-modfile=$mod" -mod=readonly -buildmode=c-shared -o plugins/windows/amd64/qwen-cliproxyapi.dll .
+go build "-modfile=$mod" -mod=readonly -o bin/bailian-quota.exe ./cmd/bailian-quota
 ```
+
+Prepare the external modfile and matching sum from this repository's `go.mod`/`go.sum`, set its Go directive to the integration Core's requirement, and add a module replacement for `github.com/router-for-me/CLIProxyAPI/v8` pointing to the pinned SPEC92 Core checkout. Record that checkout's commit/SDK state. Keep these temporary files outside the repository; this patch does not change the published dependency pin.
 
 Build outputs are ignored by Git. Deploy the DLL under the host plugin directory's `windows/amd64` subdirectory. Deploy the CLI separately and configure its absolute executable path. Do not install into a running host without following its normal deployment procedure.
 
@@ -119,47 +122,49 @@ Token Plan `/models` is auth-protected. Coding Plan `/models` is a static public
 
 **Canonical:** credential management queries Coding Plan; AI-provider resources query prepaid PAYG balance (not implemented here). No provider/hostname-based product switching is allowed. A UI type is not ownership proof.
 
-The **plugin's current argument validation** still accepts only the explicit raw-token Coding Plan protocol shown in the configuration example. This helper-only change does not wire CLI/cache arguments through `internal/plugin`, Manager or Core. Raw-token mode reads the supplied token and performs one fixed HTTPS Coding Plan operation, without login, refresh, profile writes, browser or Token Plan/BSS queries.
+The plugin accepts the explicit CLI/cache Coding Plan arguments shown in the configuration example. It reuses the existing helper and bounded CLI reading chain; this integration adds **no official API operation**. Native `FetchQuota` returns normalized candidate readings with `accountProvenance:configured_cli_profile`; Core, not the plugin or legacy view, must validate enrollment and receipt evidence before accepting them for policy. Existing raw-token mode remains available as a non-authoritative query, without helper login, refresh, profile writes, browser or Token Plan/BSS queries.
 
 ### Helper CLI transport and cache
 
-The helper now also accepts these explicit standalone invocations (paths are placeholders, not installed configuration):
+These invocations are accepted by the helper and as the plugin's explicit `command-args` (paths are placeholders, not installed configuration):
 
 ```text
 bailian-quota --protocol qwen-coding-plan-v1 --source coding-plan --bl-path <explicit-bl-executable-or-cmd> --cache-file <coding-plan-cache.json> --timeout 90s
 bailian-quota --protocol qwen-coding-plan-v1 --source coding-plan --cache-only --cache-file <coding-plan-cache.json> --max-age 45m
 ```
 
-`--bl-path` is an alternative to `--token-file`/region/site, never a fallback or combination. `BAILIAN_BL_PATH` alone does not activate this Coding Plan transport. It invokes exactly `usage coding-plan --output json` once through the existing bounded BL runner and Windows private Job. No helper login/auth/refresh command, browser, retry or Token Plan request is made. **The supplied official CLI may internally refresh and write its own profile on an auth failure**; this adapter cannot promise otherwise. Raw-token mode remains available when that behavior is unacceptable. No installed CLI/profile/account is changed by this patch.
+`--bl-path` is an alternative to `--token-file`/region/site, never a fallback or combination. `BAILIAN_BL_PATH` alone does not activate this Coding Plan transport. It invokes exactly `usage coding-plan --output json` once through the existing bounded BL runner and Windows private Job. No helper login/auth/refresh command, browser, retry or Token Plan request is made. **The supplied official CLI may internally refresh and write its own profile on an auth failure**; this adapter cannot promise otherwise. Existing raw-token mode avoids that behavior but remains unbound. No live CLI/profile/account is used by the component tests.
 
 Flattened CLI JSON must contain all three windows' native `usedQuota`, `totalQuota` and integer-millisecond `resetTime`; `percentage` is informational, never a substitute for counts. Counts are decoded without adding float rounding (the adapter cannot recover precision already lost inside an external CLI). Any CLI error/nonzero exit, including the legacy Windows teardown-abort status, fails closed. Legacy `--source bl` keeps its original monthly Token Plan behavior; its cache is never reinterpreted as Coding Plan.
 
-Both explicit Coding Plan transports may opt into `--cache-file`. A complete successful result is saved via same-directory temporary write/close/replace, with failed refresh/save preserving the old cache. Cache-only performs no CLI, token-file, profile or network read. It validates the same strict `CodingPlanResult`, rejects stale/future/wrong-protocol/partial/malformed/over-4-MiB input, and preserves the original `observedAt` and reset precision. `--max-age` must be positive (default 45m); cached success remains non-authoritative. The raw-token transport's no-cache default is unchanged.
+At the standalone helper boundary, both explicit Coding Plan transports may opt into `--cache-file`; the plugin's native CLI lane requires a cache file, and cache-only additionally requires explicit positive `--max-age`. A complete successful result is saved via same-directory temporary write/close/replace, with failed refresh/save preserving the old cache. Cache-only performs no CLI, token-file, profile or network read. It validates the same strict `CodingPlanResult`, rejects stale/future/wrong-protocol/partial/malformed/over-4-MiB input, and preserves the original `observedAt` and reset precision. The helper's `--max-age` default is 45m; cached success alone remains non-authoritative. The raw-token transport's no-cache default is unchanged.
 
 Live Coding Plan cache production also atomically publishes `<cache-file>.attempt.json` with `version:1`, `state` and RFC3339Nano `startedAt`. `running` is written before CLI/token/HTTP I/O. A terminal `failed` adds `completedAt` but no observation/hash; a terminal `success` adds `completedAt`, the cache's original `observedAt`, and lowercase64hex `cacheSHA256` of the exact saved bytes (including the JSON newline). A failed refresh invalidates the receipt without changing the previous cache. Start-publication failure stops before querying; final-success-publication failure emits no success and attempts a failed receipt. No diagnostic/error/secret is stored in this fixed small receipt. Cache-only neither reads nor writes the sidecar and retains its existing helper contract.
 
-Cache and receipt are two files, not a cross-file transaction: after cache commit, receipt-publication failure can leave new cache bytes without a valid matching success receipt. If the sidecar is entirely unwritable, even failed publication cannot be guaranteed; the command returns failure. Same-path producers must be externally serialized. Host-owned Core acceptance must independently require an enrolled, matching successful receipt and hash; these helper receipts are freshness evidence, never selected-key/account/plan proof. This patch does not implement that Core check or modify plugin/wrappers.
+Cache and receipt are two files, not a cross-file transaction: after cache commit, receipt-publication failure can leave new cache bytes without a valid matching success receipt. If the sidecar is entirely unwritable, even failed publication cannot be guaranteed; the command returns failure. Same-path producers must be externally serialized. Host-owned Core acceptance must independently require an enrolled, matching successful receipt and hash; these helper receipts are freshness evidence, never remote selected-key/account/plan proof. Core's SPEC92 integration owns these checks; this Qwen fix does not modify Core or Manager.
 
 Domestic: `cn-beijing` / `domestic`; international: `ap-southeast-1` / `international`. No unknown-region fallback. Native counts are exact decimal strings with unit `requests` in `5h`, `week`, `billing_month` windows. Missing/null data, wrong units, unsafe numbers/times and nested errors do not become zero, unlimited quota or partial recovery evidence.
 
-**Query success is not authority:** the helper emits `queryStatus:success`, `authorityStatus:needs_configuration`, `reason:account_authority_unverified`. The native plugin API returns no quota groups/subscription/summary. The plugin management `quota-usage` route retains selected key cards and query status but does not copy account windows/metrics onto unverified keys. Login JSON, hand-entered account, helper `verified:true` and a successful public models list cannot close the selected-key/account/plan binding.
+**Query success is not authority:** the helper emits `queryStatus:success`, `authorityStatus:needs_configuration`, `reason:account_authority_unverified`. For explicitly configured CLI/cache sources, native `FetchQuota` preserves all three window buckets (in one quota group), the Coding Plan subscription, observation metadata derived from the original timestamp, protocol and `configured_cli_profile` provenance as candidate evidence. Core must match `quota-resource-bindings` on resource ID plus identity, credential, config and membership versions, and validate source/cache/receipt freshness and matching windows before policy admission. Old `quota-resource-ids` is not a substitute for these bindings. Raw-token native queries still return empty quota plus `needs_configuration`.
+
+The legacy plugin management `quota-usage` view has no Core enrollment/receipt context. **Both bulk and single-credential queries** retain labels/indexes and successful query status but always report `authorityStatus:needs_configuration` and `account_authority_unverified`, without windows, metrics, plan or observation attribution. It does not copy native candidate readings onto configured or panel-added keys. Login JSON, hand-entered account, helper `verified:true` and a successful public models list do not prove selected-key/account/plan ownership.
 
 Legacy standalone bsk/cookie/`--source bl` and Token Plan caches remain rejected by the credential quota command; they are not optional fallback/enrichment. A missing protocol/source also fails before plugin execution. Existing inference routing and configuration defaults are not changed by this quota slice; an inference hostname must not select the quota product.
 
-See [Coding Plan query and authority contract](docs/coding-plan-quota.md) for the original raw-token/plugin contract and pinned first-party source lines; its helper BL/cache prohibition is superseded only by the helper-only interface above, not by new plugin acceptance. [Old BL deployment notes](docs/bl-quota-deployment.md) are historical standalone Token Plan records, not current credential-lane guidance.
+See [Coding Plan query and authority contract](docs/coding-plan-quota.md) for the current CLI/cache/native-versus-legacy contract and pinned first-party source lines. [Old BL deployment notes](docs/bl-quota-deployment.md) are historical standalone Token Plan records, not current credential-lane guidance.
 
 ### Credential naming and selection
 
 Credential labels preserve explicit aliases; otherwise keys are masked for display. `quota-usage` accepts `{}` for listed Qwen credentials or `{"auth_index":"<host credential index>"}` for one; unknown indexes return 404. No key enters helper argv. The embedded same-origin page still requires management authorization; it shows the explicit error rather than fabricated quota. `/quota-info` remains available.
 
-This is supplementary Qwen helper/plugin evidence only, **not Manager -> SQLite -> actual Core end-to-end acceptance or full functionality**. Core's authority guard remains unchanged. No real credentials/config/provider access, deployment or big gates were used for this slice.
+This is supplementary Qwen helper/plugin evidence only, **not Manager -> SQLite -> actual Core end-to-end acceptance, live ownership verification or full functionality**. No Core/Manager source, real credentials/config/provider access or deployment is changed by this Qwen fix.
 
 ## Testing
 
 ```powershell
 $env:CGO_ENABLED = '1'
-go test ./... -cover
-go vet ./...
+go test "-modfile=$mod" -mod=readonly ./... -cover
+go vet "-modfile=$mod" -mod=readonly ./...
 ```
 
 Tests use dummy keys and mocked HTTP/CLI processes. Live acceptance must use an isolated core on **8399**, a scratch directory outside every repository, its own auth/config, and the built DLL. Do not change/restart the live **8317** instance. Remove scratch credentials and stop the isolated process afterward.
@@ -169,8 +174,8 @@ Tests use dummy keys and mocked HTTP/CLI processes. Live acceptance must use an 
 - CLIProxyAPI core v8.0.15's management `/plugins` response does not expose `auth_provider` or `executor` capability booleans, and its `quota_provider` field is the provider identifier string. The native registration envelope declares the booleans; credential/model/execution/quota endpoints demonstrate behavior. This is a host response-schema limitation, not a reason to invent endpoint fields.
 - No OAuth flow or refresh token: these are manually configured plan keys. Refresh preserves the credential rather than inventing a token.
 - Exhausted inference quota produces the upstream error, not a successful completion. Historical account readings are not current quota or ownership evidence.
-- Read-only query parsing is implemented, but selected-key -> exact Coding Plan/account -> query-principal binding remains unverified. Native policy quota stays `needs_configuration` until a trustworthy verifier exists.
-- The plugin Coding Plan lane does not yet accept the helper's new explicit CLI/cache configuration. Neither helper transport permits legacy browser/cookie/Token Plan fallback or implicit helper enrollment. Separate pre-enrollment and future real acceptance need explicit authorization; CLI-internal refresh is the explicit caveat above.
+- Native CLI/cache candidates require current local Core enrollment and matching receipt evidence; `configured_cli_profile` alone never authorizes policy. This does not independently verify the remote selected-key -> exact Coding Plan/account -> query-principal relationship. Legacy views and raw-token native queries remain `needs_configuration`.
+- The plugin accepts explicit CLI/cache configuration but never implicitly enrolls it. Neither helper transport permits legacy browser/cookie/Token Plan fallback. Separate pre-enrollment and future live acceptance need explicit authorization; CLI-internal refresh is the explicit caveat above.
 - Coding Plan is the sole credential quota product, not optional enrichment. Successful public model discovery does not validate keys.
 - Removed keys may leave host-managed credential files; remove/disable those via the host management flow. A credential file deleted while the host is running is **not** recreated until the next host restart — the plugin materialises credentials from config at registration, so delete + restart if you need a clean single credential.
 - Initial fallback models may not be available under every plan/region. Client formats supported here are Chat Completions and Messages, not Responses.

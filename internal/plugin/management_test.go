@@ -112,6 +112,16 @@ func managementUsage(t *testing.T, m *Manager, body string) (pluginapi.Managemen
 	return resp, result.Cards
 }
 
+func assertLegacyQuotaCardUnbound(t *testing.T, card quotaCard) {
+	t.Helper()
+	if card.QueryStatus != "success" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") {
+		t.Errorf("legacy query acquired credential authority: %#v", card)
+	}
+	if len(card.Windows) != 0 || len(card.Metrics) != 0 || card.Plan != "" || card.PlanStatus != "" || card.PlanStart != "" || card.PlanEnd != "" || card.DaysLeft != nil || card.ObservedAt != "" {
+		t.Errorf("account reading was attributed to a legacy credential card: %#v", card)
+	}
+}
+
 func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
 	m := managementCommandManager(t, "coding")
 	resp, cards := managementUsage(t, m, `{}`)
@@ -119,11 +129,11 @@ func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
 		t.Fatalf("wrong cards: %s", resp.Body)
 	}
 	card := cards[0]
-	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.QueryStatus != "success" || card.AuthorityStatus != "configured_cli_profile" || card.Error != nil {
+	if card.AuthIndex != "host-index-0" || card.Label != accountLabel(m.cfg, m.cfg.APIKeys[0].Value, "Host label", 0) || card.QueryStatus != "success" || card.AuthorityStatus != "needs_configuration" || card.Error == nil || !strings.Contains(*card.Error, "account_authority_unverified") {
 		t.Fatalf("wrong card: %#v", card)
 	}
-	if len(card.Windows) != 3 || len(card.Metrics) != 0 || card.Plan != "coding-plan" || card.ObservedAt == "" {
-		t.Fatalf("account query incorrectly attributed to selected key: %#v", card)
+	if len(card.Windows) != 0 || len(card.Metrics) != 0 || card.Plan != "" || card.ObservedAt != "" {
+		t.Fatalf("account query was attributed to selected key: %#v", card)
 	}
 	if card.PlanEnd != "" || card.DaysLeft != nil {
 		t.Fatal("invented subscription period")
@@ -132,6 +142,7 @@ func TestManagementQuotaUsageSuccessAndSelectedHostIndex(t *testing.T) {
 	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].AuthIndex != "host-index-0" {
 		t.Fatalf("selection failed: %s", resp.Body)
 	}
+	assertLegacyQuotaCardUnbound(t, cards[0])
 	for _, key := range m.cfg.APIKeys {
 		if strings.Contains(string(resp.Body), key.Value) {
 			t.Fatal("key leaked")
@@ -298,21 +309,45 @@ func TestManagementNoSecretsInFailuresAndSuccessFields(t *testing.T) {
 	}
 }
 
-func TestManagementQuotaUsageMultipleOwnedCredentials(t *testing.T) {
-	m := managementCommandManager(t, "coding")
-	m.cfg.APIKeys = append(m.cfg.APIKeys, config.APIKey{Value: "dummy-second-key", Name: "Second Qwen"})
-	entries := []pluginapi.HostAuthFileEntry{}
-	for i, key := range m.cfg.APIKeys {
-		digest := sha256.Sum256([]byte(key.Value))
-		entries = append(entries, pluginapi.HostAuthFileEntry{Type: ProviderID, Name: "qwen-key-" + hex.EncodeToString(digest[:]) + ".json", AuthIndex: fmt.Sprintf("index-%d", i)})
-	}
-	m.bridge = NewHostBridge(func(string, []byte) ([]byte, error) { return hostOK(hostAuthListResponse{Files: entries}), nil })
-	resp, cards := managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) != 2 || cards[1].Label != "Second Qwen" || cards[1].Plan != "coding-plan" || cards[0].Plan != "coding-plan" || cards[0].Error != nil || cards[1].Error != nil || len(cards[0].Windows) != 3 || len(cards[1].Windows) != 3 {
-		t.Fatalf("lost owned credentials: %s", resp.Body)
-	}
-	resp, cards = managementUsage(t, m, `{"auth_index":"index-1"}`)
-	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].Label != "Second Qwen" {
-		t.Fatalf("wrong selection: %s", resp.Body)
+func TestManagementLegacyQuotaBulkAndSingleNeverAttributeCLIReading(t *testing.T) {
+	for _, transport := range []string{"live-cli", "cache-only"} {
+		t.Run(transport, func(t *testing.T) {
+			m := managementCommandManager(t, "coding")
+			if transport == "cache-only" {
+				m.cfg.CommandArgs = []string{
+					"-test.run=^TestCLIQuotaFixtureProcess$", "--", "--cli-quota-fixture", "cache",
+					"--source=coding-plan", "--protocol=qwen-coding-plan-v1", "--cache-only=true",
+					"--cache-file=C:/synthetic cache/coding quota.json", "--max-age", "45m",
+				}
+			}
+			m.cfg.APIKeys = append(m.cfg.APIKeys, config.APIKey{Value: "dummy-second-key", Name: "Second Qwen"})
+			entries := []pluginapi.HostAuthFileEntry{}
+			for i, key := range m.cfg.APIKeys {
+				digest := sha256.Sum256([]byte(key.Value))
+				entries = append(entries, pluginapi.HostAuthFileEntry{Type: ProviderID, Name: "qwen-key-" + hex.EncodeToString(digest[:]) + ".json", AuthIndex: fmt.Sprintf("index-%d", i)})
+			}
+			m.bridge = NewHostBridge(func(string, []byte) ([]byte, error) { return hostOK(hostAuthListResponse{Files: entries}), nil })
+			for _, selection := range []struct {
+				name, body string
+				indexes    []string
+			}{
+				{"bulk", `{}`, []string{"index-0", "index-1"}},
+				{"single-first", `{"auth_index":"index-0"}`, []string{"index-0"}},
+				{"single-second", `{"auth_index":"index-1"}`, []string{"index-1"}},
+			} {
+				t.Run(selection.name, func(t *testing.T) {
+					resp, cards := managementUsage(t, m, selection.body)
+					if resp.StatusCode != 200 || len(cards) != len(selection.indexes) {
+						t.Fatalf("lost selected credentials: %s", resp.Body)
+					}
+					for i, card := range cards {
+						if card.AuthIndex != selection.indexes[i] || card.AuthIndex == "index-1" && card.Label != "Second Qwen" {
+							t.Fatalf("wrong selection: %s", resp.Body)
+						}
+						assertLegacyQuotaCardUnbound(t, card)
+					}
+				})
+			}
+		})
 	}
 }

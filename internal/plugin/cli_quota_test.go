@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
 // This is a synthetic subprocess boundary, not the pending official-CLI helper.
@@ -53,9 +56,11 @@ func TestCLIQuotaCacheOnlyOptionsStayUnbound(t *testing.T) {
 		"--cache-file=C:/synthetic cache/coding quota.json", "--max-age", "45m",
 	}
 	resp, cards := managementUsage(t, m, `{}`)
-	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].QueryStatus != "success" || cards[0].AuthorityStatus != "configured_cli_profile" || cards[0].Error != nil || len(cards[0].Windows) != 3 || len(cards[0].Metrics) != 0 {
+	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].AuthIndex != "host-index-0" {
 		t.Fatalf("explicit cached query was rejected or became bound credential quota: %s", resp.Body)
 	}
+	assertLegacyQuotaCardUnbound(t, cards[0])
+	assertNativeCLIQuotaCandidate(t, m)
 }
 
 func TestCLIQuotaOptionsRejectWrongProductAndMixedTransportBeforeExecution(t *testing.T) {
@@ -117,12 +122,28 @@ func TestCLIQuotaExplicitOptionsReachManagementWithoutKeyAuthority(t *testing.T)
 	if resp.StatusCode != 200 || len(cards) != 1 || cards[0].QueryStatus != "success" {
 		t.Fatalf("explicit Coding Plan CLI options did not reach a successful query: %s", resp.Body)
 	}
-	card := cards[0]
-	if card.AuthIndex != "host-index-0" || card.AuthorityStatus != "configured_cli_profile" || card.Error != nil || len(card.Windows) != 3 || len(card.Metrics) != 0 || card.Plan != "coding-plan" || card.ObservedAt == "" {
-		t.Fatalf("configured CLI query was not rendered as a scoped reading: %s", resp.Body)
+	if cards[0].AuthIndex != "host-index-0" {
+		t.Fatalf("selected credential was lost: %s", resp.Body)
 	}
+	assertLegacyQuotaCardUnbound(t, cards[0])
+	assertNativeCLIQuotaCandidate(t, m)
+}
+
+func assertNativeCLIQuotaCandidate(t *testing.T, m *Manager) {
+	t.Helper()
 	result, err := m.FetchQuota(context.Background(), quotaRequest())
-	if err != nil || result.Subscription == nil || len(result.Groups) != 1 || len(result.Groups[0].Buckets) != 3 {
+	if err != nil || result.Subscription == nil || result.Subscription.Plan != "coding-plan" || len(result.Groups) != 1 || len(result.Summary) != 0 {
 		t.Fatalf("configured CLI query was not normalized: %#v %v", result, err)
+	}
+	if result.AccountProvenance != "configured_cli_profile" || result.Protocol != "qwen-coding-plan-v1" || result.TimestampProvenance != "local_cli_acquisition_time" || time.UnixMilli(result.ObservedAtMS).UTC().Format(time.RFC3339Nano) != "2026-11-02T12:00:00Z" {
+		t.Errorf("native candidate lost the metadata Core must validate: %#v", result)
+	}
+	want := []pluginapi.QuotaBucket{
+		{Window: "5h", RemainingFraction: 0.62, ResetTime: "2026-08-06T07:06:40Z"},
+		{Window: "week", RemainingFraction: 0.5, ResetTime: "2026-08-07T10:53:20Z"},
+		{Window: "billing_month", RemainingFraction: 0.05, ResetTime: "2026-08-08T14:40:00Z"},
+	}
+	if !slices.Equal(result.Groups[0].Buckets, want) {
+		t.Errorf("native candidate lost the three CLI windows: %#v", result.Groups[0].Buckets)
 	}
 }

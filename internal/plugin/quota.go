@@ -52,8 +52,9 @@ func (b *boundedOutput) snapshot() ([]byte, bool) {
 	return append([]byte(nil), b.buf.Bytes()...), b.overflow
 }
 
-// FetchQuota queries Coding Plan only. A console token or CLI account cannot
-// prove ownership of the host-selected key; counts must not become policy data.
+// FetchQuota queries Coding Plan only. CLI/cache results are candidate readings
+// for Core enrollment/receipt validation, not proof of selected-key ownership.
+// Raw-token queries remain unbound and return no policy quota.
 func (m *Manager) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchRequest) (pluginapi.QuotaFetchResponse, error) {
 	empty := pluginapi.QuotaFetchResponse{}
 	if req.Provider != ProviderID {
