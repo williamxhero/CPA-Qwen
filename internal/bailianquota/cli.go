@@ -90,6 +90,21 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer, client
 			}
 			return 0
 		}
+		attempt := codingPlanCacheAttempt{Version: 1, State: "running", StartedAt: client.Now().UTC().Format(time.RFC3339Nano)}
+		failAttempt := func(err error) int {
+			if *cacheFile != "" {
+				failed := codingPlanCacheAttempt{Version: 1, State: "failed", StartedAt: attempt.StartedAt, CompletedAt: client.Now().UTC().Format(time.RFC3339Nano)}
+				if receiptErr := writeCodingPlanAttempt(*cacheFile, failed); receiptErr != nil {
+					err = receiptErr
+				}
+			}
+			return writeError(stdout, *pretty, err)
+		}
+		if *cacheFile != "" {
+			if err := writeCodingPlanAttempt(*cacheFile, attempt); err != nil {
+				return failAttempt(err)
+			}
+		}
 		fetchCtx, cancel := context.WithTimeout(ctx, *timeout)
 		defer cancel()
 		var result CodingPlanResult
@@ -100,15 +115,22 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer, client
 			result, err = client.fetchCodingPlan(fetchCtx, *tokenFile, *consoleRegion, *consoleSite)
 		}
 		if err != nil {
-			return writeError(stdout, *pretty, err)
+			return failAttempt(err)
 		}
 		if *cacheFile != "" {
-			if err := writeCodingPlanCache(*cacheFile, result); err != nil {
-				return writeError(stdout, *pretty, err)
+			hash, err := writeCodingPlanCache(*cacheFile, result)
+			if err != nil {
+				return failAttempt(err)
+			}
+			attempt.State = "success"
+			attempt.CompletedAt = client.Now().UTC().Format(time.RFC3339Nano)
+			attempt.ObservedAt, attempt.CacheSHA256 = result.ObservedAt, hash
+			if err := writeCodingPlanAttempt(*cacheFile, attempt); err != nil {
+				return failAttempt(err)
 			}
 		}
 		if writeJSON(stdout, *pretty, result) != nil {
-			return 1
+			return failAttempt(failure("output_error", "cannot_write_coding_plan_result"))
 		}
 		return 0
 	}

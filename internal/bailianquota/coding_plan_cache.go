@@ -2,6 +2,8 @@ package bailianquota
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -36,31 +38,32 @@ func readCodingPlanCache(path string, now time.Time, maxAge time.Duration) (Codi
 	return result, nil
 }
 
-func writeCodingPlanCache(path string, result CodingPlanResult) error {
+func writeCodingPlanCache(path string, result CodingPlanResult) (string, error) {
 	var body bytes.Buffer
 	if writeJSON(&body, false, result) != nil || body.Len() > maxResponseBytes {
-		return failure("cache_file_error", "coding_plan_cache_exceeds_response_limit")
+		return "", failure("cache_file_error", "coding_plan_cache_exceeds_response_limit")
 	}
 	// Same-directory temporary file, complete write and close before replace.
 	// A query/write failure never truncates the previous service reading.
 	file, err := os.CreateTemp(filepath.Dir(path), ".coding-plan-*")
 	if err != nil {
-		return failure("cache_file_error", "cannot_create_coding_plan_cache")
+		return "", failure("cache_file_error", "cannot_create_coding_plan_cache")
 	}
 	defer os.Remove(file.Name())
 	if _, err := file.Write(body.Bytes()); err != nil {
 		file.Close()
-		return failure("cache_file_error", "cannot_write_coding_plan_cache")
+		return "", failure("cache_file_error", "cannot_write_coding_plan_cache")
 	}
 	if err := file.Sync(); err != nil {
 		file.Close()
-		return failure("cache_file_error", "cannot_sync_coding_plan_cache")
+		return "", failure("cache_file_error", "cannot_sync_coding_plan_cache")
 	}
 	if err := file.Close(); err != nil {
-		return failure("cache_file_error", "cannot_close_coding_plan_cache")
+		return "", failure("cache_file_error", "cannot_close_coding_plan_cache")
 	}
 	if err := os.Rename(file.Name(), path); err != nil {
-		return failure("cache_file_error", "cannot_replace_coding_plan_cache")
+		return "", failure("cache_file_error", "cannot_replace_coding_plan_cache")
 	}
-	return nil
+	sum := sha256.Sum256(body.Bytes())
+	return hex.EncodeToString(sum[:]), nil
 }
