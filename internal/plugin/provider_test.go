@@ -74,7 +74,7 @@ func TestProviderRegistrationAndCredentialMaterialization(t *testing.T) {
 	var registration registrationResult
 	decodeResult(t, raw, &registration)
 	cap := registration.Capabilities
-	if !cap.AuthProvider || !cap.ModelProvider || !cap.Executor || !cap.QuotaProvider || !strings.Contains(strings.Join(cap.ExecutorInputFormats, ","), "anthropic.messages") || registration.Metadata.GitHubRepository != "https://github.com/williamxhero/qwen-cliproxyapi" {
+	if !cap.AuthProvider || !cap.ModelProvider || !cap.Executor || !cap.QuotaProvider || !strings.Contains(strings.Join(cap.ExecutorInputFormats, ","), "anthropic.messages") || registration.Metadata.GitHubRepository != "https://github.com/williamxhero/CPA-Qwen" {
 		t.Fatalf("bad registration: %#v", registration)
 	}
 	calls := f.callsOf(pluginabi.MethodHostAuthSave)

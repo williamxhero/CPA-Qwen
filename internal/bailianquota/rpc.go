@@ -24,6 +24,7 @@ func Calls() []Call {
 		{"subscription", "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/subscription", map[string]any{"queryInstanceInfoRequest": map[string]any{"commodityCode": "sfm_tokenplansolo_public_cn"}}},
 		{"addon", "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/addon/summary", map[string]any{"commodityCode": "sfm_tokenplansoloaddon_public_cn"}},
 		{"coding", "zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2", map[string]any{"queryCodingPlanInstanceInfoRequest": map[string]any{"commodityCode": "sfm_codingplan_public_cn"}}},
+		{"resetCards", "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/reset-card/list", map[string]any{}},
 	}
 }
 

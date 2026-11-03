@@ -1,4 +1,4 @@
-# Qwen CLIProxyAPI Plugin
+# CPA-Qwen
 
 A native CLIProxyAPI v8 credential provider for Qwen, with an explicit read-only **Coding Plan** credential-quota query. Inference support is separate from quota authority.
 
@@ -19,6 +19,7 @@ Expose one provider, **`qwen`**, using CLIProxyAPI's credential scheduler, rotat
 - Strict Coding Plan helper protocol: three exact request-count windows, no arbitrary shell command or helper auth retry. Native CLI/cache readings are candidates for Core validation, not selected-key ownership or policy authority.
 - Plugin-registered quota status API retains per-credential selection, with independent query/authority statuses. Missing key/account/plan proof remains `needs_configuration`; the embedded quota page is not advertised as a panel menu.
 - Standalone stdlib-only Go helper: explicit official Coding Plan CLI or existing pre-enrolled raw-token transport, plus a strict Coding Plan cache. The plugin accepts explicit CLI/cache arguments; legacy Token Plan BL/browser/cookie tooling remains separate and is forbidden in the credential quota lane.
+- Same-module `aliyun-bss-quota` compatibility plugin: bounded command queries or read-only AK/SK account balance, optional monthly spend and Model Studio resource packages. Account money is not Coding Plan request quota.
 
 ## Requirements
 
@@ -29,15 +30,18 @@ Expose one provider, **`qwen`**, using CLIProxyAPI's credential scheduler, rotat
 ## Build
 
 ```powershell
-$env:CGO_ENABLED = '1'
-$mod = 'D:\path-outside-repository\qwen-test.mod'
-go build "-modfile=$mod" -mod=readonly -buildmode=c-shared -o plugins/windows/amd64/qwen-cliproxyapi.dll .
-go build "-modfile=$mod" -mod=readonly -o bin/bailian-quota.exe ./cmd/bailian-quota
+python -B scripts/build-artifacts.py `
+  --core-source 'D:\path\to\CPA-Core-ex' `
+  --go 'D:\path\to\go1.26.10\bin\go.exe' `
+  --cc 'D:\path\to\mingw64\bin\gcc.exe' `
+  --output 'D:\path\to\new-candidate'
 ```
 
-Prepare the external modfile and matching sum from this repository's `go.mod`/`go.sum`, set its Go directive to the integration Core's requirement, and add a module replacement for `github.com/router-for-me/CLIProxyAPI/v8` pointing to the pinned SPEC92 Core checkout. Record that checkout's commit/SDK state. Keep these temporary files outside the repository; this patch does not change the published dependency pin.
+The single build entry creates **both native plugins and the only `bailian-quota` CLI** from this module. Runtime identifiers and artifact basenames remain `qwen-cliproxyapi`, `aliyun-bss-quota`, and `bailian-quota`; the repository is `williamxhero/CPA-Qwen`. No old Aliyun checkout, directory junction or second module is required.
 
-Build outputs are ignored by Git. Deploy the DLL under the host plugin directory's `windows/amd64` subdirectory. Deploy the CLI separately and configure its absolute executable path. Do not install into a running host without following its normal deployment procedure.
+The Core SDK must be explicitly supplied; the published v8.0.0 dependency alone is insufficient. The script copies module inputs into the candidate, resolves that SDK there, and leaves both source checkouts' module files unchanged. Module downloads are disabled unless `--allow-module-downloads` is explicitly supplied. Python 3 and the selected Go/C toolchains must already be installed.
+
+Existing candidate directories are never overwritten. Only all-success, unchanged-source builds receive `manifest.json`, with source/SDK fingerprints, resolved module hashes, toolchain settings and artifact SHA-256. A failed candidate retains logs and `FAILED.json`, not a success manifest. Building is **not deployment**: the script never installs, stops, restarts or rolls back a running service. Actual installation must use the separately authorized deployment transaction with backup, health checks and automatic rollback. See [compatibility and migration](docs/aliyun-quota-compatibility.md).
 
 ## Configuration
 
@@ -46,7 +50,7 @@ Set the key in the **host process environment** rather than storing it in this r
 ```yaml
 plugins:
   enabled: true
-  dir: "D:\\WILL\\AGENT\\CPA\\qwen-cliproxyapi\\plugins"
+  dir: "D:\\path\\to\\candidate\\plugins"
   configs:
     qwen-cliproxyapi:
       enabled: true
@@ -104,7 +108,7 @@ Registration displays **QWen Plan API Key** with an original embedded Q monogram
 
 With management authorization, submit `POST /v0/management/plugins/qwen-cliproxyapi/credentials` with `base_url`, `api_key`, and optional `name`. The default label is `Qwen`. Unknown fields are ignored. URLs must be HTTP/HTTPS with a hostname and without userinfo, query, or fragment; explicit HTTP panel credentials are accepted independently of the config-only `allow-http` switch. Prefer HTTPS outside local tests. Empty/whitespace keys and control characters are rejected. Successful responses contain only `ok`, the `qwen-key-<sha256>` ID, and the label; keys are never returned or logged. A label containing the submitted key is redacted. Duplicate key + normalized base URL returns 409, including configured and imported credentials. Unreadable existing Qwen storage fails closed with 502.
 
-The host saves the same top-level `type`, `id`, `label`, and `api_key` schema as configured credentials, plus `base_url`. Panel IDs hash the key and URL together, so the same key can target distinct URLs without overwriting a credential. Existing configured-key IDs remain unchanged. Panel parsing uses the host's filename-based runtime ID (`<returned id>.json`) so watcher parsing updates the initially saved record instead of creating a duplicate runtime credential. Execution resolves `base_url` from the selected credential's attributes, then persisted storage, then the plugin config; both streaming and non-streaming use that result. Parsing/reloading and refresh preserve the URL and panel label. Model discovery still uses the configured key/base URL, not a separate catalogue per panel credential; at least one configured key remains required.
+The host saves the same top-level `type`, `id`, `label`, and `api_key` schema as configured credentials, plus `base_url`. Panel IDs hash the key and URL together, so the same key can target distinct URLs without overwriting a credential. Existing configured-key IDs remain unchanged. Panel parsing uses the host's filename-based runtime ID (`<returned id>.json`) so watcher parsing updates the initially saved record instead of creating a duplicate runtime credential. Execution resolves `base_url` from current persisted storage, then attributes, then the plugin endpoint default; both streaming and non-streaming use that result. Parsing/reloading and refresh preserve the URL and panel label. Model discovery still uses the configured key/base URL, not a separate catalogue per panel credential; at least one configured key remains required.
 
 `auth.login.start` returns the manual form specification in `Metadata` (`auth_kind: manual_api_key`, the credential submit path, **添加凭证**, and Base URL/API Key/凭证名称 fields). An opaque state satisfies the host's login-start validation; it is not an OAuth flow, and the form does not need polling. Empirical isolated-core verification at 8399 returned HTTP 200 with only `state`, `status: "ok"`, and `url: ""`: **the host does not forward Metadata**. The panel must use its allowlist fallback; the metadata form path is not functional through this host's management response.
 
@@ -162,6 +166,7 @@ This is supplementary Qwen helper/plugin evidence only, **not Manager -> SQLite 
 ## Testing
 
 ```powershell
+$mod = 'D:\path\to\candidate\build-inputs\source.mod'
 $env:CGO_ENABLED = '1'
 go test "-modfile=$mod" -mod=readonly ./... -cover
 go vet "-modfile=$mod" -mod=readonly ./...
@@ -178,7 +183,7 @@ Tests use dummy keys and mocked HTTP/CLI processes. Live acceptance must use an 
 - The plugin accepts explicit CLI/cache configuration but never implicitly enrolls it. Neither helper transport permits legacy browser/cookie/Token Plan fallback. Separate pre-enrollment and future live acceptance need explicit authorization; CLI-internal refresh is the explicit caveat above.
 - Coding Plan is the sole credential quota product, not optional enrichment. Successful public model discovery does not validate keys.
 - Removed keys may leave host-managed credential files; remove/disable those via the host management flow. A credential file deleted while the host is running is **not** recreated until the next host restart — the plugin materialises credentials from config at registration, so delete + restart if you need a clean single credential.
-- Initial fallback models may not be available under every plan/region. Client formats supported here are Chat Completions and Messages, not Responses.
+- No models are advertised before the first successful catalogue discovery. Client formats supported here are Chat Completions and Messages, not Responses.
 
 ## Attribution
 

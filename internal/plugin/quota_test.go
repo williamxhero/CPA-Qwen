@@ -64,6 +64,16 @@ func TestQuotaCommandHelper(t *testing.T) {
 	case "garbage":
 		fmt.Print("CLI garbage diagnostic")
 		os.Exit(0)
+	case "encoded-message":
+		fmt.Print(`{"message":"ConsoleNeedLogin: FixtureAlpha%2Bopaque%2Fvalue"}`)
+	case "encoded-garbage":
+		fmt.Print("ConsoleNeedLogin: FixtureAlpha%252bopaque%252Fvalue")
+	case "invalid-with-stderr":
+		fmt.Print(`{}`)
+		fmt.Fprint(os.Stderr, "ConsoleNeedLogin: helper requires login")
+	case "coding-with-stderr":
+		fmt.Print(codingFixture)
+		fmt.Fprint(os.Stderr, "ordinary helper warning")
 	case "empty":
 		fmt.Print(`{"source":"bsk","windows":[],"metrics":[]}`)
 	case "timeout":
@@ -98,6 +108,29 @@ func commandManager(t *testing.T, mode string) *Manager {
 }
 func quotaRequest() pluginapi.QuotaFetchRequest {
 	return pluginapi.QuotaFetchRequest{Provider: ProviderID, Attributes: map[string]string{"api_key": "dummy-selected-key"}}
+}
+
+func TestQuotaDecodeFailuresKeepSafeCLIDiagnostics(t *testing.T) {
+	for _, mode := range []string{"encoded-message", "encoded-garbage", "invalid-with-stderr"} {
+		t.Run(mode, func(t *testing.T) {
+			m := commandManager(t, mode)
+			m.cfg.APIKeys = nil
+			req := quotaRequest()
+			req.Attributes["api_key"] = "FixtureAlpha+opaque/value"
+			_, err := m.FetchQuota(context.Background(), req)
+			if err == nil || strings.Contains(err.Error(), "FixtureAlpha") || !strings.Contains(err.Error(), "ConsoleNeedLogin") {
+				t.Fatalf("unsafe or lost CLI diagnostic: %v", err)
+			}
+		})
+	}
+}
+
+func TestQuotaValidContractAllowsStderrWarning(t *testing.T) {
+	m := commandManager(t, "coding-with-stderr")
+	result, err := m.FetchQuota(context.Background(), quotaRequest())
+	if err != nil || len(result.Groups) != 1 || len(result.Groups[0].Buckets) != 3 {
+		t.Fatalf("valid stdout rejected because of stderr: %#v %v", result, err)
+	}
 }
 
 func TestQuotaCommandLegacyContractRejectedAndArgumentSlice(t *testing.T) {
@@ -163,17 +196,23 @@ func TestQuotaCommandSecretRedaction(t *testing.T) {
 		t.Fatal("lost CLI's own error")
 	}
 }
-func TestQuotaMappingClampsPercentAndAllowsMetricsOnly(t *testing.T) {
-	// Legacy serializer compatibility only: the credential command boundary
-	// rejects this entire protocol before these old helpers can be reached.
+func TestQuotaMappingRejectsOutOfRangeAndAllowsMetricsOnly(t *testing.T) {
 	for _, sample := range []struct {
 		percent   float64
 		remaining float64
-	}{{-20, 1}, {25, 0.75}, {150, 0}} {
+	}{{0, 1}, {25, 0.75}, {100, 0}} {
 		result, err := normalizeQuota([]byte(fmt.Sprintf(`{"windows":[{"window":"5h","usedPercent":%g}]}`, sample.percent)), "Qwen")
 		if err != nil || result.Groups[0].Buckets[0].RemainingFraction != sample.remaining {
-			t.Fatalf("clamp failed: %#v %v", result, err)
+			t.Fatalf("valid mapping failed: %#v %v", result, err)
 		}
+	}
+	for _, percent := range []float64{-20, -0.000001, 100.000001, 150} {
+		t.Run(fmt.Sprintf("reject_%g", percent), func(t *testing.T) {
+			result, err := normalizeQuota([]byte(fmt.Sprintf(`{"windows":[{"window":"5h","usedPercent":%g}]}`, percent)), "Qwen")
+			if err == nil || len(result.Groups) != 0 || len(result.Summary) != 0 {
+				t.Fatalf("out-of-range percentage silently clamped: %#v %v", result, err)
+			}
+		})
 	}
 	result, err := normalizeQuota([]byte(`{"metrics":[{"key":"balance","label":"Balance","value":0,"format":"number"}]}`), "Qwen")
 	if err != nil || len(result.Groups) != 0 || len(result.Summary) != 1 {
