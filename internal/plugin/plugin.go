@@ -25,8 +25,9 @@ const ProviderID = "qwen"
 
 // pluginName / pluginVersion are reported in registration metadata.
 const (
-	pluginName    = "cpa-credential-qwen"
-	pluginVersion = "0.1.0"
+	pluginName = "cpa-credential-qwen"
+	// pluginVersion is the maintained version of this repository.
+	pluginVersion = generatedVersion
 )
 
 // githubRepoURL satisfies the host's validPlugin gate (host.go
