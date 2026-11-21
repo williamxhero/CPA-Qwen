@@ -2,13 +2,15 @@
 
 CLIProxyAPI v8 的 Qwen 凭证插件。仓库是 [williamxhero/CPA-Qwen](https://github.com/williamxhero/CPA-Qwen)。运行标识是 `cpa-credential-qwen`，提供商是 `qwen`。
 
-## 组成
+原 [CPA-Aliyun-Quota](https://github.com/williamxhero/CPA-Aliyun-Quota) 的额度工具已迁入本库。维护和构建以下三个产物只需本库及兼容的 Core 源码，无需检出旧库。已有部署请先核对[额度来源、兼容配置与迁移边界](docs/aliyun-quota-compatibility.md)。
+
+## 产物与入口
 
 | 产物 | 用途 |
 | --- | --- |
 | `cpa-credential-qwen` | 推理凭证插件与额度查询 |
-| `aliyun-bss-quota` | 只读账户金额查询插件 |
-| `bailian-quota` | Coding Plan 用量 CLI |
+| [`aliyun-bss-quota`](cmd/aliyun-bss-quota-plugin/) | 兼容旧额度配置：`bss` 查账户金额，`command` 读取账户级额度；不参与推理 |
+| [`bailian-quota`](cmd/bailian-quota/) | 百炼额度 CLI；与原生凭证插件配合读取 Coding Plan 用量 |
 
 ## 功能
 
